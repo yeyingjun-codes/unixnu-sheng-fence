@@ -33,8 +33,10 @@ concurrency:
 
 jobs:
   package:
-    runs-on: macos-26
+    runs-on: macos-latest
     timeout-minutes: 360
+    # macos-26 is not offered to this account; macos-latest carries the same
+    # Xcode 26.6 / iPhoneOS26.5 SDK the T0 build compiled against.
     steps:
       - uses: actions/checkout@v4
         with:
