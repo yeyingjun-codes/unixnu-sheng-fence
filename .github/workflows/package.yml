@@ -97,10 +97,23 @@ jobs:
             UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
             UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/inputs.json
           key: ${{ steps.seed-key.outputs.key }}-${{ inputs.os }}
+      - name: decrypt the preserved installation seed
+        if: inputs.os == '27'
+        env:
+          SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
+        run: |
+          if [ -f device/seed/data.dbr.enc ] && [ -n "${SEED_PASSPHRASE:-}" ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
+              -in device/seed/data.dbr.enc -out "$RUNNER_TEMP/data.dbr" -pass env:SEED_PASSPHRASE
+            echo "decrypted the preserved seed: $(wc -c < "$RUNNER_TEMP/data.dbr") bytes"
+          else
+            echo "no encrypted seed available; falling back to cache/init_data"
+          fi
       - name: prepare preserved Data seed
         if: inputs.os == '27'
         env:
           INIT_DATA: ${{ inputs.init_data }}
+          PRESERVED_SEED: ${{ runner.temp }}/data.dbr
         run: |
           python3 - <<'PY'
           import hashlib, json, os, pathlib, urllib.request
@@ -119,8 +132,8 @@ jobs:
                   raise SystemExit('Saved seed differs; preserve and inspect it instead of replacing this installation')
               path.parent.mkdir(parents=True, exist_ok=True)
               path.write_bytes(data)
-          preserved = pathlib.Path('device/seed/data.dbr')
-          if not path.is_file() and preserved.is_file():
+          preserved = pathlib.Path(os.environ.get('PRESERVED_SEED') or '')
+          if not path.is_file() and str(preserved) not in ('', '.') and preserved.is_file():
               path.parent.mkdir(parents=True, exist_ok=True)
               path.write_bytes(preserved.read_bytes())
               print('used the preserved installation seed at', preserved)
