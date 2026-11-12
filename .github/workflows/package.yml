@@ -119,6 +119,11 @@ jobs:
                   raise SystemExit('Saved seed differs; preserve and inspect it instead of replacing this installation')
               path.parent.mkdir(parents=True, exist_ok=True)
               path.write_bytes(data)
+          preserved = pathlib.Path('device/seed/data.dbr')
+          if not path.is_file() and preserved.is_file():
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(preserved.read_bytes())
+              print('used the preserved installation seed at', preserved)
           if not path.is_file() and os.environ['INIT_DATA'] != 'true':
               raise SystemExit('No saved seed. Supply the ORIGINAL seed for an existing installation, or select init_data for a FIRST installation')
           PY
