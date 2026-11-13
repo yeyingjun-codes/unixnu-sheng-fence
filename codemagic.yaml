@@ -391,7 +391,32 @@ workflows:
           echo "ipsw  -> $(command -v ipsw || echo MISSING)"
           command -v cargo >/dev/null || { echo 'cargo still missing; aborting before a 40-minute build' >&2; exit 1; }
           cd "$WORK/device"
+          # BaseTools is built by package/build.sh with `make -j$(nproc) >/dev/null`; on this EDK2
+          # feed (mu_basecore cfb93724) the parallel host-tools build can lose the VfrCompile link
+          # race and abort with a message that is swallowed by that >/dev/null. The same commit
+          # builds cleanly serially (probe run 11-13 16:0x). Keep the default parallelism for the
+          # main build, but if package fails, finish BaseTools serially and retry once.
+          export JOBS="${JOBS:-4}"
+          set +e
           scripts/package.sh --os 27 --uefi ../uefi-sheng
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            echo "== package.sh failed rc=$rc; repairing BaseTools serially"
+            for d in "$WORK"/UniXNU/out/feeds/mu_basecore-*/BaseTools/Source/C; do
+              [ -d "$d" ] || continue
+              echo "== serial make -C $d -j1"
+              make -C "$d" -j1 >> "$DIAG/08b-basetools.txt" 2>&1
+              echo "serial make rc=$? GenFw=$([ -x "$d/bin/GenFw" ] && echo yes || echo no)"
+            done
+            R="$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27"
+            for f in "$R/logs/package.log" "$R/logs/runtime.log"; do
+              [ -f "$f" ] && tail -200 "$f" > "$DIAG/08c-$(basename "$f").txt"
+            done
+            echo "== retry package.sh once"
+            scripts/package.sh --os 27 --uefi ../uefi-sheng
+            rc=$?
+          fi
+          exit $rc
 
       - name: collect outputs
         script: |
