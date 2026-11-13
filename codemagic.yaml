@@ -10,6 +10,9 @@
 # Secrets (app variable group "sheng-secrets", secure): UNIXNU_UNIQUE_CHIP_ID, SEED_PASSPHRASE.
 # board.toml names ../UniXNU and ../uefi-sheng relative to itself, so all three checkouts live
 # as siblings under $CM_BUILD_DIR/work.
+#
+# Every step tees its output to out/diag/, which is published as an artifact, because the API
+# does not expose step logs.
 
 workflows:
   sheng-package27:
@@ -21,6 +24,7 @@ workflows:
         - sheng-secrets
       vars:
         WORK: "$CM_BUILD_DIR/work"
+        DIAG: "$CM_BUILD_DIR/out/diag"
         UNIXNU_REF: 82b847c4ac3f68a57024b3082ffa3a03442defd9
         DEVICE_REPO: https://github.com/yeyingjun-codes/unixnu-sheng-fence.git
         DEVICE_REF: main
@@ -32,42 +36,86 @@ workflows:
         HOMEBREW_NO_INSTALL_CLEANUP: "1"
       xcode: latest
     scripts:
-      - name: runner info and disk headroom
+      - name: environment diagnostics
         script: |
-          set -euo pipefail
-          sw_vers; uname -m
-          df -h / | tail -2
-          newest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1 || true)
-          if [ -n "$newest" ]; then
-            echo "selecting $newest"; sudo xcode-select -s "$newest/Contents/Developer" || true
-          fi
-          xcodebuild -version || true
-          xcrun --sdk iphoneos --show-sdk-version || true
-          sudo rm -rf /Library/Developer/CoreSimulator/Caches/* 2>/dev/null || true
-          df -h / | tail -2
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/01-env.txt"
+          {
+            echo "date: $(date -u)"
+            echo "user: $(id -un)  arch: $(uname -m)"
+            sw_vers || true
+            echo "--- Xcode ---"
+            ls -d /Applications/Xcode*.app 2>/dev/null || echo "no Xcode bundles"
+            xcodebuild -version 2>&1 || true
+            echo "sdk(iphoneos): $(xcrun --sdk iphoneos --show-sdk-version 2>&1 || true)"
+            echo "clang: $(clang --version 2>&1 | head -2 || true)"
+            echo "--- brew ---"
+            command -v brew || true
+            brew --version 2>&1 | head -2 || true
+            echo "brew prefix: $(brew --prefix 2>&1 || echo none)"
+            echo "--- disk ---"
+            df -h / | tail -2
+            echo "--- tool presence ---"
+            for t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool mformat mcopy ipsw cargo rustc rustup python3 openssl; do
+              printf '%-18s %s\n' "$t" "$(command -v "$t" || echo MISSING)"
+            done
+            echo "--- python ---"
+            python3 -c 'import tomllib,sys;print("python",sys.version.split()[0])' 2>&1 || true
+          } > "$L" 2>&1
+          cat "$L"
 
       - name: host toolchain
         script: |
-          set -euo pipefail
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/02-toolchain.txt"
+          exec > >(tee -a "$L") 2>&1
+          export PATH="/opt/homebrew/opt/bison/bin:$PATH"
+          echo "== brew install =="
+          brew install dtc llvm lld cmake mtools ninja glslang shaderc spirv-tools bison pkgconf rustup 2>&1 | tail -30
+          echo "brew install rc=$?"
           export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$PATH"
-          brew install dtc llvm lld cmake mtools ninja glslang shaderc spirv-tools bison pkgconf rustup blacktop/tap/ipsw
           printf '%s\n' "/opt/homebrew/opt/llvm/bin" "/opt/homebrew/opt/lld/bin" "/opt/homebrew/opt/bison/bin" "$HOME/.cargo/bin" >> "$CM_ENV"
-          rustup toolchain install 1.98.0 --profile minimal --component rust-src
+          echo "== rustup =="
+          if command -v rustup >/dev/null; then
+            rustup toolchain install 1.98.0 --profile minimal --component rust-src 2>&1 | tail -5
+            echo "rustup rc=$?"
+          else
+            echo "rustup missing, trying rustup-init"
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh && \
+              sh /tmp/rustup-init.sh -y --default-toolchain 1.98.0 --profile minimal --component rust-src --no-modify-path 2>&1 | tail -5
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          echo "== ipsw (direct release, no tap) =="
+          if ! command -v ipsw >/dev/null; then
+            mkdir -p "$HOME/.local/bin"
+            curl -fL --retry 3 -o /tmp/ipsw.tar.gz "https://github.com/blacktop/ipsw/releases/download/v3.1.741/ipsw_3.1.741_macOS_arm64.tar.gz" 2>&1 | tail -3
+            tar -xzf /tmp/ipsw.tar.gz -C "$HOME/.local/bin" && chmod +x "$HOME/.local/bin/ipsw"
+            export PATH="$HOME/.local/bin:$PATH"
+            printf '%s\n' "$HOME/.local/bin" >> "$CM_ENV"
+          fi
+          echo "== verify =="
           ok=1
           for t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool \
                    mformat mcopy ipsw cargo rustc; do
-            command -v "$t" >/dev/null || { echo "missing tool: $t"; ok=0; }
+            if p=$(command -v "$t" 2>/dev/null); then echo "ok   $t -> $p"; else echo "MISS $t"; ok=0; fi
           done
           for t in lld-link llvm-lib llvm-rc llvm-nm llvm-objcopy; do
-            [ -f "/opt/homebrew/opt/llvm/bin/$t" ] || [ -f "/opt/homebrew/opt/lld/bin/$t" ] || { echo "missing tool: $t"; ok=0; }
+            if [ -x "/opt/homebrew/opt/llvm/bin/$t" ] || [ -x "/opt/homebrew/opt/lld/bin/$t" ]; then echo "ok   $t"; else echo "MISS $t"; ok=0; fi
           done
-          python3 -c 'import tomllib,sys; print("python", sys.version.split()[0])'
+          echo "cargo: $(cargo --version 2>&1 || echo none)"
+          echo "ok=$ok"
+          sw_vers; xcodebuild -version 2>&1 | head -2; uname -m
           [ "$ok" = 1 ]
-          sw_vers; xcodebuild -version; uname -m
 
       - name: checkout the three trees as siblings
         script: |
-          set -euo pipefail
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/03-checkout.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
           mkdir -p "$WORK"
           cd "$WORK"
           git clone --depth 1 --branch "$DEVICE_REF" --recurse-submodules --shallow-submodules "$DEVICE_REPO" device
@@ -84,7 +132,10 @@ workflows:
 
       - name: verify the device tree is the T0 baseline
         script: |
-          set -euo pipefail
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/04-baseline.txt"
+          exec > >(tee -a "$L") 2>&1
           cd "$WORK/device"
           python3 - <<'PY'
           import pathlib, sys, tomllib
@@ -109,7 +160,10 @@ workflows:
 
       - name: platform seed sanity
         script: |
-          set -euo pipefail
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/05-seed-check.txt"
+          exec > >(tee -a "$L") 2>&1
           if ! [[ "${UNIXNU_UNIQUE_CHIP_ID:-}" =~ ^[0-9a-fA-F]{8}$ ]]; then
             echo 'Set UNIXNU_UNIQUE_CHIP_ID (8 hex digits) in the sheng-secrets variable group.' >&2
             exit 1
@@ -118,7 +172,11 @@ workflows:
 
       - name: decrypt and install the preserved Data seed
         script: |
-          set -euo pipefail
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/06-seed.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
           [ -f "$WORK/device/seed/data.dbr.enc" ] || { echo 'seed/data.dbr.enc missing' >&2; exit 1; }
           [ -n "${SEED_PASSPHRASE:-}" ] || { echo 'SEED_PASSPHRASE is not set' >&2; exit 1; }
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
@@ -133,7 +191,11 @@ workflows:
 
       - name: pin Adreno740 to the fence-fix revision
         script: |
-          set -euo pipefail
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07-adreno.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
           cd "$WORK/UniXNU"
           python3 - <<'PY'
           import os, pathlib, re
@@ -156,33 +218,39 @@ workflows:
 
       - name: package
         script: |
-          set -euo pipefail
-          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$PATH"
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/08-package.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
           cd "$WORK/device"
           scripts/package.sh --os 27 --uefi ../uefi-sheng
 
       - name: collect outputs
         script: |
-          set -euo pipefail
+          set -uo pipefail
+          mkdir -p "$DIAG" "$CM_BUILD_DIR/out"
+          L="$DIAG/09-outputs.txt"
+          exec > >(tee -a "$L") 2>&1
           root="$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27"
-          echo "== produced files =="
-          find "$root" -maxdepth 2 -type f \( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name 'package.manifest.json' \) -print -exec ls -l {} \;
+          echo "== tree under $root =="
+          find "$root" -maxdepth 2 -type f \( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json' \) -print -exec ls -l {} \; 2>/dev/null || true
+          rc=0
           for f in boot/boot.img payload/payload.img kernel/kernel.macho package.manifest.json; do
-            [ -f "$root/$f" ] || { echo "MISSING $f" >&2; exit 1; }
+            if [ -f "$root/$f" ]; then
+              cp "$root/$f" "$CM_BUILD_DIR/out/$(basename "$f")"
+            else
+              echo "MISSING $f"; rc=1
+            fi
           done
-          shasum -a 256 "$root/boot/boot.img" "$root/payload/payload.img" "$root/kernel/kernel.macho"
-          mkdir -p "$CM_BUILD_DIR/out"
-          cp "$root/boot/boot.img" "$CM_BUILD_DIR/out/boot.img"
-          cp "$root/payload/payload.img" "$CM_BUILD_DIR/out/payload.img"
-          cp "$root/kernel/kernel.macho" "$CM_BUILD_DIR/out/kernel.macho"
-          cp "$root/package.manifest.json" "$CM_BUILD_DIR/out/package.manifest.json"
-          if [ -f "$root/runtime/inputs.json" ]; then cp "$root/runtime/inputs.json" "$CM_BUILD_DIR/out/inputs.json"; fi
+          for f in "$CM_BUILD_DIR"/out/*; do [ -f "$f" ] && shasum -a 256 "$f"; done
           ls -l "$CM_BUILD_DIR/out"
+          exit $rc
 
     artifacts:
+      - out/diag/*.txt
       - out/boot.img
       - out/payload.img
       - out/kernel.macho
       - out/package.manifest.json
-      - out/inputs.json
-      - $CM_BUILD_DIR/work/UniXNU/out/sheng/*/*/package.manifest.json
