@@ -438,8 +438,9 @@ workflows:
           exec > >(tee -a "$L") 2>&1
           set -e
           cd "$WORK"
-          git clone --depth 1 --branch release/202608 https://github.com/microsoft/mu_basecore.git
-          cd mu_basecore
+          git clone --depth 1 --branch sheng --recurse-submodules --shallow-submodules https://github.com/UniXNU/uefi-sheng.git
+          cd uefi-sheng/Mu_Basecore
+          echo "pinned Mu_Basecore: $(git rev-parse HEAD) $(git log -1 --format=%ci)"
           git submodule update --init --depth 1 BaseTools/Source/C/BrotliCompress/brotli
           echo "clang: $(clang++ --version | head -2)"
       - name: build BaseTools C
@@ -447,7 +448,7 @@ workflows:
           set -uo pipefail
           mkdir -p "$DIAG"
           L="$DIAG/02-basetools.txt"
-          cd "$WORK/mu_basecore"
+          cd "$WORK/uefi-sheng/Mu_Basecore"
           make -C BaseTools/Source/C -j4 > "$L" 2>&1
           rc=$?
           echo "rc=$rc"
