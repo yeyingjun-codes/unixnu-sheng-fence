@@ -323,8 +323,10 @@ workflows:
               if not d.exists():
                   # tools/fetch-sources.py runs `git sparse-checkout add /dir/ ...`, which git rejects
                   # in cone mode: "specify directories rather than patterns (no leading slash)".
-                  # A plain depth-1 checkout lands on the exact same locked commit and satisfies the
-                  # same required-file check, so materialise it here and let --check validate it.
+                  # A plain depth-1 checkout lands on the exact same locked commit, so materialise it
+                  # here; then switch that clone to NON-cone sparse checkout seeded with the same
+                  # patterns, so the later upstream `sparse-checkout add` call succeeds instead of
+                  # aborting the build (build-ath12k-wifi.py calls fetch-sources.sh again).
                   subprocess.run(['git', 'clone', '--depth', '1', '--branch', src['ref'],
                                   src['url'], str(d)], check=True)
               head = subprocess.run(['git', '-C', str(d), 'rev-parse', 'HEAD'],
@@ -332,6 +334,17 @@ workflows:
               print(f"{name}: HEAD {head}")
               if head != src['commit']:
                   raise SystemExit(f"{name}: expected {src['commit']}, found {head}")
+
+              subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckoutCone', 'false'], check=True)
+              subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckout', 'true'], check=True)
+              info = d / '.git/info/sparse-checkout'
+              info.parent.mkdir(parents=True, exist_ok=True)
+              info.write_text('\n'.join(src['paths']) + '\n')
+              subprocess.run(['git', '-C', str(d), 'read-tree', '-mu', 'HEAD'], check=True)
+              missing = [p for p in src['required'] if not (d / p).is_file()]
+              if missing:
+                  raise SystemExit(f"{name}: sparse checkout dropped required files: {missing[:4]}")
+              print(f"{name}: non-cone sparse checkout with {len(src['paths'])} patterns, required files present")
 
           s = lock['supplicant']
           archive = deps / s['archive']
