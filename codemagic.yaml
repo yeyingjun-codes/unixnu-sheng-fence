@@ -219,6 +219,20 @@ workflows:
           print('Adreno740 ->', os.environ['ADRENO740_REPO'], os.environ['ADRENO740_REV'])
           PY
           grep -A7 'id = "Adreno740"' components.toml | head -10
+          # components.toml alone does NOT move the build: the packager compiles
+          # drivers/Adreno740 straight out of the checked-out submodule (verified 11-13 18:05:
+          # the manifest still recorded 6fa7bae while components.toml said 0b28a0e5). Move the
+          # submodule itself: rewrite .gitmodules, retarget the gitlink, sync, re-checkout.
+          git config -f .gitmodules submodule.drivers/Adreno740.url "$ADRENO740_REPO"
+          git add .gitmodules
+          git update-index --cacheinfo "160000,$ADRENO740_REV,drivers/Adreno740"
+          git submodule sync --recursive
+          git submodule update --init --depth 1 drivers/Adreno740
+          head=$(git -C drivers/Adreno740 rev-parse HEAD)
+          echo "drivers/Adreno740 HEAD = $head"
+          [ "$head" = "$ADRENO740_REV" ] || { echo "Adreno740 pin did not take: $head" >&2; exit 1; }
+          git -C drivers/Adreno740 log -1 --format='%H %s'
+          git status --porcelain | head -10
 
       - name: fix the upstream mesa patch header
         script: |
