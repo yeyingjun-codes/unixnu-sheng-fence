@@ -420,3 +420,38 @@ workflows:
       - out/payload.img
       - out/kernel.macho
       - out/package.manifest.json
+  probe-basetools:
+    name: probe EDK2 BaseTools C on Xcode 26
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      vars:
+        WORK: "$CM_BUILD_DIR/work"
+        DIAG: "$CM_BUILD_DIR/out/diag"
+      xcode: latest
+    scripts:
+      - name: clone mu_basecore
+        script: |
+          set -uo pipefail
+          mkdir -p "$WORK" "$DIAG"
+          L="$DIAG/01-clone.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          cd "$WORK"
+          git clone --depth 1 --branch release/202608 https://github.com/microsoft/mu_basecore.git
+          cd mu_basecore
+          git submodule update --init --depth 1 BaseTools/Source/C/BrotliCompress/brotli
+          echo "clang: $(clang++ --version | head -2)"
+      - name: build BaseTools C
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/02-basetools.txt"
+          cd "$WORK/mu_basecore"
+          make -C BaseTools/Source/C -j4 > "$L" 2>&1
+          rc=$?
+          echo "rc=$rc"
+          tail -150 "$L"
+          exit $rc
+    artifacts:
+      - out/diag/*.txt
