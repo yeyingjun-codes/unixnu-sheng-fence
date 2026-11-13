@@ -220,6 +220,39 @@ workflows:
           PY
           grep -A7 'id = "Adreno740"' components.toml | head -10
 
+      - name: fix the upstream mesa patch header
+        script: |
+          # UniXNU@82b847c4 ships patches/mesa/turnip-frame-diagnostics.patch whose first file
+          # ("tu_frame_diagnostic.h") is a new file but carries no "new file mode" line. With -p1
+          # git strips "--- /dev/null" to "dev/null" and aborts with
+          #   error: dev/null: No such file or directory
+          # (reproduced locally with git 2.55). Nothing else in the build is touched; the rest of
+          # the patch and all 81 kernel patches apply cleanly.
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/08a-mesa-patch.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          p="$WORK/UniXNU/patches/mesa/turnip-frame-diagnostics.patch"
+          [ -f "$p" ] || { echo "missing $p"; exit 1; }
+          shasum -a 256 "$p"
+          python3 - "$p" <<'PY'
+          import sys, pathlib
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text()
+          marker = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\n--- /dev/null'
+          patched = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\nnew file mode 100644\n--- /dev/null'
+          if 'new file mode 100644\n--- /dev/null' in text:
+              print('already carries new file mode; nothing to do')
+          elif marker not in text:
+              raise SystemExit('unexpected patch layout; refusing to rewrite')
+          else:
+              path.write_text(text.replace(marker, patched, 1))
+              print('inserted "new file mode 100644" for tu_frame_diagnostic.h')
+          PY
+          shasum -a 256 "$p"
+          sed -n '1,6p' "$p"
+
       - name: package
         script: |
           set -uo pipefail
