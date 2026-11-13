@@ -293,6 +293,27 @@ workflows:
               raise SystemExit('firmware mismatch: ' + ', '.join(bad))
           PY
 
+      - name: fetch Ath12kWifi locked sources (linux / freebsd / wpa_supplicant)
+        script: |
+          # device/scripts/build-wifi-userspace.py -> drivers/Ath12kWifi/tools/build-supplicant.py
+          #   -> prepare-supplicant.py -> fetch-sources.py --check
+          # deps/ is not committed (sparse upstream checkouts + a 3 MB tarball), so the check
+          # aborts with "missing source: .../drivers/Ath12kWifi/deps/linux". Resolve the locked
+          # versions here, once, before the package step.
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07c-ath12k-sources.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          cd "$WORK/device/drivers/Ath12kWifi"
+          echo "== source-lock =="
+          python3 -c "import json;d=json.load(open('tools/source-lock.json'));print({k:(v.get('commit') or v.get('sha256')) if isinstance(v,dict) else v for k,v in d.items()})"
+          echo "== fetch-sources =="
+          python3 tools/fetch-sources.py
+          echo "== check =="
+          python3 tools/fetch-sources.py --check
+          cat out/source-identity.json
+
       - name: package
         script: |
           set -uo pipefail
