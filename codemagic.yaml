@@ -260,7 +260,15 @@ workflows:
           L="$DIAG/08-package.txt"
           exec > >(tee -a "$L") 2>&1
           set -e
-          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+          # $CM_ENV appends were not visible to later steps, so build the PATH here as well.
+          # cargo/rustc live in the keg-only rustup prefix; ipsw went to ~/.local/bin.
+          RUSTUP_BIN="$(brew --prefix rustup 2>/dev/null)/bin"
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH"
+          echo "PATH=$PATH"
+          echo "cargo -> $(command -v cargo || echo MISSING)"
+          echo "rustc -> $(command -v rustc || echo MISSING)"
+          echo "ipsw  -> $(command -v ipsw || echo MISSING)"
+          command -v cargo >/dev/null || { echo 'cargo still missing; aborting before a 40-minute build' >&2; exit 1; }
           cd "$WORK/device"
           scripts/package.sh --os 27 --uefi ../uefi-sheng
 
