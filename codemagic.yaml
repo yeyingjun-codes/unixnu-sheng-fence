@@ -308,9 +308,56 @@ workflows:
           cd "$WORK/device/drivers/Ath12kWifi"
           echo "== source-lock =="
           python3 -c "import json;d=json.load(open('tools/source-lock.json'));print({k:(v.get('commit') or v.get('sha256')) if isinstance(v,dict) else v for k,v in d.items()})"
-          echo "== fetch-sources =="
-          python3 tools/fetch-sources.py
-          echo "== check =="
+          echo "== materialise deps =="
+          python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess, tarfile, urllib.request
+
+          root = pathlib.Path('.').resolve()
+          lock = json.loads((root / 'tools/source-lock.json').read_text())
+          deps = root / 'deps'
+          deps.mkdir(exist_ok=True)
+
+          for name in ('linux', 'freebsd'):
+              src = lock[name]
+              d = deps / name
+              if not d.exists():
+                  # tools/fetch-sources.py runs `git sparse-checkout add /dir/ ...`, which git rejects
+                  # in cone mode: "specify directories rather than patterns (no leading slash)".
+                  # A plain depth-1 checkout lands on the exact same locked commit and satisfies the
+                  # same required-file check, so materialise it here and let --check validate it.
+                  subprocess.run(['git', 'clone', '--depth', '1', '--branch', src['ref'],
+                                  src['url'], str(d)], check=True)
+              head = subprocess.run(['git', '-C', str(d), 'rev-parse', 'HEAD'],
+                                    capture_output=True, text=True, check=True).stdout.strip()
+              print(f"{name}: HEAD {head}")
+              if head != src['commit']:
+                  raise SystemExit(f"{name}: expected {src['commit']}, found {head}")
+
+          s = lock['supplicant']
+          archive = deps / s['archive']
+          if not archive.exists():
+              tmp = archive.with_suffix('.part')
+              with urllib.request.urlopen(s['url'], timeout=60) as r, tmp.open('wb') as out:
+                  while chunk := r.read(1 << 20):
+                      out.write(chunk)
+              tmp.replace(archive)
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          print(f"supplicant: {digest}")
+          if digest != s['sha256']:
+              raise SystemExit('supplicant archive hash mismatch')
+
+          target = deps / s['directory']
+          if not target.exists():
+              with tarfile.open(archive) as package:
+                  for member in package.getmembers():
+                      path = (deps / member.name).resolve()
+                      if (not (member.isfile() or member.isdir())
+                              or target.resolve() not in (path, *path.parents)):
+                          raise SystemExit(f'unexpected archive member: {member.name}')
+                  package.extractall(deps)
+          print('deps ready')
+          PY
+          echo "== upstream check =="
           python3 tools/fetch-sources.py --check
           cat out/source-identity.json
 
