@@ -197,3 +197,9 @@ CI_ENABLE_METAL_GPU = "0"
 
 ["os_overrides"."ipados-26.5.2-23F84"]
 "remove" = ["payload.install", "payload.root_policies", "payload.runtime"]
+
+# Android boot image must use the v3 header: the vendor ABL on sheng rejects v0
+# load addresses (kernel at 0x8000) and the device ends in a black screen instead of
+# the UEFI/BootShim logo. The known-good probe21 boot.img is header_version 3.
+["bootimg"."image"]
+header_version = 3
