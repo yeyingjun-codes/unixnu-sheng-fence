@@ -71,12 +71,16 @@ workflows:
           mkdir -p "$DIAG"
           L="$DIAG/02-toolchain.txt"
           exec > >(tee -a "$L") 2>&1
-          export PATH="/opt/homebrew/opt/bison/bin:$PATH"
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$PATH"
           echo "== brew install =="
           brew install dtc llvm lld cmake mtools ninja glslang shaderc spirv-tools bison pkgconf rustup 2>&1 | tail -30
           echo "brew install rc=$?"
-          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$PATH"
-          printf '%s\n' "/opt/homebrew/opt/llvm/bin" "/opt/homebrew/opt/lld/bin" "/opt/homebrew/opt/bison/bin" "$HOME/.cargo/bin" >> "$CM_ENV"
+          # rustup is keg-only: its toolchain proxies (cargo, rustc) are not linked into /opt/homebrew/bin.
+          RUSTUP_BIN="$(brew --prefix rustup 2>/dev/null)/bin"
+          echo "rustup keg: $RUSTUP_BIN"
+          [ -x "$RUSTUP_BIN/rustup" ] && export PATH="$RUSTUP_BIN:$PATH"
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$PATH"
+          printf '%s\n' "/opt/homebrew/opt/llvm/bin" "/opt/homebrew/opt/lld/bin" "/opt/homebrew/opt/bison/bin" "$HOME/.cargo/bin" "$RUSTUP_BIN" >> "$CM_ENV"
           echo "== rustup =="
           if command -v rustup >/dev/null; then
             rustup toolchain install 1.98.0 --profile minimal --component rust-src 2>&1 | tail -5
