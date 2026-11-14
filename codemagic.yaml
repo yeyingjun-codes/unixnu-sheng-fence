@@ -267,6 +267,21 @@ workflows:
           shasum -a 256 "$p"
           sed -n '1,6p' "$p"
 
+      - name: apply the historical UEFI ramdisk and menu probes
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07d-uefi-adaptations.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          # Reuse the exact historical scripts from F:\unixnu\patch\ci (kept in ci/ in the device repo).
+          # apply_ramdisk: find the payload FAT inside the ABL-concatenated initrd.
+          # apply_probe: read-only BlockIo/DiskIo/SimpleFileSystem/LBA0 counters in the menu title.
+          python3 "$WORK/device/ci/apply_ramdisk.py" "$WORK/UniXNU/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c"
+          python3 "$WORK/device/ci/apply_probe.py" "$WORK/UniXNU/package/UniXNUPkg/Library/UniXNULib/Config.c"
+          grep -n 'FindFatBootSector' "$WORK/UniXNU/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c"
+          grep -n 'mProbeBlock' "$WORK/UniXNU/package/UniXNUPkg/Library/UniXNULib/Config.c" | head -5
+
       - name: install WCN7850 firmware (linux-firmware, pinned)
         script: |
           # device/scripts/build-wifi-userspace.py reads firmware/wcn7850/{amss,m3,board-2}.bin.
