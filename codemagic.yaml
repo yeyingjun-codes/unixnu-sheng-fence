@@ -1099,7 +1099,11 @@ workflows:
           set -e
           mkdir -p "$WORK"
           cd "$WORK"
-          git clone --depth 1 --branch "$DEVICE_REF" --recurse-submodules --shallow-submodules "$DEVICE_REPO" device
+          git init -q device
+          git -C device remote add origin "$DEVICE_REPO"
+          git -C device fetch --depth 1 origin "$DEVICE_REF"
+          git -C device checkout -q FETCH_HEAD
+          git -C device submodule update --init --recursive --depth 1
           git clone --depth 1 --branch "$UEFI_REF" --recurse-submodules --shallow-submodules "$UEFI_REPO" uefi-sheng
           git init -q UniXNU
           git -C UniXNU remote add origin https://github.com/UniXNU/UniXNU.git
