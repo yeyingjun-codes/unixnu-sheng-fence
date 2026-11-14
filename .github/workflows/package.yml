@@ -162,6 +162,39 @@ jobs:
           if not path.is_file() and os.environ['INIT_DATA'] != 'true':
               raise SystemExit('No saved seed. Supply the ORIGINAL seed for an existing installation, or select init_data for a FIRST installation')
           PY
+      - name: install WCN7850 firmware (linux-firmware, pinned)
+        working-directory: device
+        run: |
+          set -e
+          REF=286e9e6c952493e36310a054ff2a0327ab8108a7
+          BASE="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/ath12k/WCN7850/hw2.0"
+          DST="$GITHUB_WORKSPACE/device/firmware/wcn7850"
+          mkdir -p "$DST"
+          for f in amss.bin m3.bin board-2.bin; do
+            echo "== $f"
+            curl -fsSL --retry 4 --retry-delay 2 -o "$DST/$f" "$BASE/$f?id=$REF"
+            ls -l "$DST/$f"
+          done
+          python3 - "$DST" <<'PYFW'
+          import hashlib, json, pathlib, sys
+          dst = pathlib.Path(sys.argv[1])
+          manifest = json.loads((dst / 'manifest.json').read_text())['files']
+          bad = []
+          for name, meta in manifest.items():
+              p = dst / name
+              if not p.is_file():
+                  bad.append(name + ': missing')
+                  continue
+              data = p.read_bytes()
+              digest = hashlib.sha256(data).hexdigest()
+              ok = len(data) == meta['bytes'] and digest == meta['sha256']
+              print(f"{name:12} {len(data):>9} {digest} {'OK' if ok else 'MISMATCH'}")
+              if not ok:
+                  bad.append(name)
+          if bad:
+              raise SystemExit('firmware mismatch: ' + ', '.join(bad))
+          PYFW
+
       - name: Pin Adreno740 to the fence-fix revision
         working-directory: UniXNU
         env:
