@@ -73,6 +73,26 @@ jobs:
             [ -f "/opt/homebrew/opt/llvm/bin/$t" ] || [ -f "/opt/homebrew/opt/lld/bin/$t" ] || { echo "missing tool: $t"; ok=0; }
           done
           [ "$ok" = 1 ]
+      - name: fix the upstream mesa patch header
+        run: |
+          set -e
+          p="$GITHUB_WORKSPACE/UniXNU/patches/mesa/turnip-frame-diagnostics.patch"
+          [ -f "$p" ] || { echo "missing $p"; exit 1; }
+          python3 - "$p" <<'PYFIX'
+          import sys, pathlib
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text()
+          marker = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\n--- /dev/null'
+          patched = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\nnew file mode 100644\n--- /dev/null'
+          if 'new file mode 100644\n--- /dev/null' in text:
+              print('already carries new file mode; nothing to do')
+          elif marker not in text:
+              raise SystemExit('unexpected patch layout; refusing to rewrite')
+          else:
+              path.write_text(text.replace(marker, patched, 1))
+              print('inserted "new file mode 100644" for tu_frame_diagnostic.h')
+          PYFIX
+
       - name: platform seed
         env:
           seed: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
