@@ -253,6 +253,17 @@ jobs:
           print('deps ready')
           PY
 
+      - name: apply the historical UEFI ramdisk FAT scan and menu probes
+        working-directory: UniXNU
+        run: |
+          set -e
+          curl -fsSL "https://raw.githubusercontent.com/yeyingjun-codes/unixnu-sheng-fence/main/ci/apply_ramdisk.py" -o /tmp/apply_ramdisk.py
+          curl -fsSL "https://raw.githubusercontent.com/yeyingjun-codes/unixnu-sheng-fence/main/ci/apply_probe.py" -o /tmp/apply_probe.py
+          python3 /tmp/apply_ramdisk.py package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c
+          python3 /tmp/apply_probe.py package/UniXNUPkg/Library/UniXNULib/Config.c
+          grep -n 'FindFatBootSector' package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c | head -3
+          grep -n 'mProbeBlock' package/UniXNUPkg/Library/UniXNULib/Config.c | head -3
+
       - name: Pin Adreno740 to the fence-fix revision
         working-directory: UniXNU
         env:
