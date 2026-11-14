@@ -278,6 +278,15 @@ jobs:
           path.write_text('[[component]]'.join(out))
           PY
           grep -A7 'id = "Adreno740"' components.toml | head -10
+          git config -f .gitmodules submodule.drivers/Adreno740.url "$ADRENO740_REPO"
+          git add .gitmodules
+          git update-index --cacheinfo "160000,$ADRENO740_REV,drivers/Adreno740"
+          git submodule sync --recursive
+          git submodule update --init --depth 1 drivers/Adreno740
+          head=$(git -C drivers/Adreno740 rev-parse HEAD)
+          echo "drivers/Adreno740 HEAD = $head"
+          [ "$head" = "$ADRENO740_REV" ] || { echo "Adreno740 pin did not take: $head" >&2; exit 1; }
+          git -C drivers/Adreno740 log -1 --format="%H %s"
       - name: package
         working-directory: device
         env:
