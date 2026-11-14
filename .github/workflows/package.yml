@@ -195,11 +195,24 @@ jobs:
           INIT_DATA: ${{ inputs.init_data }}
           OS_PROFILE: ${{ inputs.os }}
         run: |
+          set -o pipefail
           args=(--os "$OS_PROFILE" --uefi ../uefi-sheng)
           if [ "$OS_PROFILE" = 27 ] && [ "$INIT_DATA" = true ]; then
             args+=(--init-data)
           fi
-          scripts/package.sh "${args[@]}"
+          mkdir -p ../diag
+          scripts/package.sh "${args[@]}" 2>&1 | tee ../diag/package.log
+          rc=$?
+          echo "package rc=$rc"
+          exit $rc
+
+      - name: upload package log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-log
+          path: diag/package.log
+          retention-days: 1
       - uses: actions/cache/save@v4
         if: always() && inputs.os == '27' && steps.data-cache.outputs.cache-hit != 'true' && hashFiles('UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr') != ''
         with:
