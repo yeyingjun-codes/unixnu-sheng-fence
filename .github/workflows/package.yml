@@ -195,6 +195,64 @@ jobs:
               raise SystemExit('firmware mismatch: ' + ', '.join(bad))
           PYFW
 
+      - name: fetch Ath12kWifi locked sources (linux / freebsd / wpa_supplicant)
+        working-directory: device/drivers/Ath12kWifi
+        run: |
+          set -e
+          python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess, tarfile, urllib.request
+          root = pathlib.Path('.').resolve()
+          lock = json.loads((root / 'tools/source-lock.json').read_text())
+          deps = root / 'deps'
+          deps.mkdir(exist_ok=True)
+          for name in ('linux', 'freebsd'):
+              src = lock[name]
+              d = deps / name
+              if not d.exists():
+                  subprocess.run(['git', 'clone', '--depth', '1', '--branch', src['ref'],
+                                  src['url'], str(d)], check=True)
+              head = subprocess.run(['git', '-C', str(d), 'rev-parse', 'HEAD'],
+                                    capture_output=True, text=True, check=True).stdout.strip()
+              print(f"{name}: HEAD {head}")
+              if head != src['commit']:
+                  raise SystemExit(f"{name}: expected {src['commit']}, found {head}")
+              subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckoutCone', 'false'], check=True)
+              subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckout', 'true'], check=True)
+              info = d / '.git/info/sparse-checkout'
+              info.parent.mkdir(parents=True, exist_ok=True)
+              info.write_text('\n'.join(src['paths']) + '\n')
+              subprocess.run(['git', '-C', str(d), 'read-tree', '-mu', 'HEAD'], check=True)
+              missing = [p for p in src['required'] if not (d / p).is_file()]
+              if missing:
+                  raise SystemExit(f"{name}: sparse checkout dropped required files: {missing[:4]}")
+              print(f"{name}: non-cone sparse checkout with {len(src['paths'])} patterns")
+          s = lock['supplicant']
+          archive = deps / s['archive']
+          if not archive.exists():
+              tmp = archive.with_suffix('.part')
+              with urllib.request.urlopen(s['url'], timeout=60) as r, tmp.open('wb') as out:
+                  while chunk := r.read(1 << 20):
+                      out.write(chunk)
+              tmp.rename(archive)
+          data = archive.read_bytes()
+          digest = hashlib.sha256(data).hexdigest()
+          if digest != s['sha256']:
+              raise SystemExit(f"supplicant: sha256 {digest} != {s['sha256']}")
+          print(f"supplicant: sha256 {digest} OK")
+          target = deps / 'wpa_supplicant-2.12'
+          if not target.exists():
+              with tarfile.open(archive) as package:
+                  bad=[]
+                  for member in package.getmembers():
+                      path = (deps/member.name).resolve()
+                      if (not (member.isfile() or member.isdir())) or target.resolve() not in (path,*path.parents):
+                          bad.append(member.name)
+                  if bad:
+                      raise SystemExit(f'supplicant: rejected members {bad[:5]}')
+                  package.extractall(deps)
+          print('deps ready')
+          PY
+
       - name: Pin Adreno740 to the fence-fix revision
         working-directory: UniXNU
         env:
