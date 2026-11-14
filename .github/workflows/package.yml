@@ -298,6 +298,24 @@ jobs:
           echo "drivers/Adreno740 HEAD = $head"
           [ "$head" = "$ADRENO740_REV" ] || { echo "Adreno740 pin did not take: $head" >&2; exit 1; }
           git -C drivers/Adreno740 log -1 --format="%H %s"
+      - name: install the process and UI report probe
+        working-directory: device
+        run: |
+          set -e
+          test -f ci/NativeUfs.probe15-fence.cpp
+          test -f drivers/ShengUfs/NativeUfs.cpp
+          cp drivers/ShengUfs/NativeUfs.cpp /tmp/NativeUfs.before-probe15.cpp
+          cp ci/NativeUfs.probe15-fence.cpp drivers/ShengUfs/NativeUfs.cpp
+          grep -n 'processReportThread' drivers/ShengUfs/NativeUfs.cpp | head -3
+          grep -n 'native_adreno_fence_wake' drivers/ShengUfs/NativeUfs.cpp | head -3
+
+      - name: instrument Adreno submit diagnostics
+        working-directory: device
+        run: |
+          set -e
+          python3 ci/patch_submit_fail_ci.py "$GITHUB_WORKSPACE/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp"
+          grep -n 'native_adreno_submit_fail' "$GITHUB_WORKSPACE/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp" | head -3
+
       - name: package
         working-directory: device
         env:
