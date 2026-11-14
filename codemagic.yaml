@@ -510,3 +510,485 @@ workflows:
           exit $rc
     artifacts:
       - out/diag/*.txt
+
+  sheng-package27-probe:
+    name: sheng package 27 (Adreno740 fence + display report probe)
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      groups:
+        - sheng-secrets
+      vars:
+        WORK: "$CM_BUILD_DIR/work"
+        DIAG: "$CM_BUILD_DIR/out/diag"
+        UNIXNU_REF: 82b847c4ac3f68a57024b3082ffa3a03442defd9
+        DEVICE_REPO: https://github.com/yeyingjun-codes/unixnu-sheng-fence.git
+        DEVICE_REF: main
+        UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
+        UEFI_REF: sheng
+        ADRENO740_REPO: https://github.com/yeyingjun-codes/adreno740-fence.git
+        ADRENO740_REV: 0b28a0e5b66501f55d71a885ab3f5f21467755a1
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+        HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      xcode: latest
+    scripts:
+      - name: environment diagnostics
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/01-env.txt"
+          {
+            echo "date: $(date -u)"
+            echo "user: $(id -un)  arch: $(uname -m)"
+            sw_vers || true
+            echo "--- Xcode ---"
+            ls -d /Applications/Xcode*.app 2>/dev/null || echo "no Xcode bundles"
+            xcodebuild -version 2>&1 || true
+            echo "sdk(iphoneos): $(xcrun --sdk iphoneos --show-sdk-version 2>&1 || true)"
+            echo "clang: $(clang --version 2>&1 | head -2 || true)"
+            echo "--- brew ---"
+            command -v brew || true
+            brew --version 2>&1 | head -2 || true
+            echo "brew prefix: $(brew --prefix 2>&1 || echo none)"
+            echo "--- disk ---"
+            df -h / | tail -2
+            echo "--- tool presence ---"
+            for t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool mformat mcopy ipsw cargo rustc rustup python3 openssl; do
+              printf '%-18s %s\n' "$t" "$(command -v "$t" || echo MISSING)"
+            done
+            echo "--- python ---"
+            python3 -c 'import tomllib,sys;print("python",sys.version.split()[0])' 2>&1 || true
+          } > "$L" 2>&1
+          cat "$L"
+
+      - name: host toolchain
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/02-toolchain.txt"
+          exec > >(tee -a "$L") 2>&1
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$PATH"
+          echo "== brew install =="
+          brew install dtc llvm lld cmake mtools ninja glslang shaderc spirv-tools bison pkgconf rustup 2>&1 | tail -30
+          echo "brew install rc=$?"
+          # rustup is keg-only: its toolchain proxies (cargo, rustc) are not linked into /opt/homebrew/bin.
+          RUSTUP_BIN="$(brew --prefix rustup 2>/dev/null)/bin"
+          echo "rustup keg: $RUSTUP_BIN"
+          [ -x "$RUSTUP_BIN/rustup" ] && export PATH="$RUSTUP_BIN:$PATH"
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$PATH"
+          printf '%s\n' "/opt/homebrew/opt/llvm/bin" "/opt/homebrew/opt/lld/bin" "/opt/homebrew/opt/bison/bin" "$HOME/.cargo/bin" "$RUSTUP_BIN" >> "$CM_ENV"
+          echo "== rustup =="
+          if command -v rustup >/dev/null; then
+            rustup toolchain install 1.98.0 --profile minimal --component rust-src 2>&1 | tail -5
+            echo "rustup rc=$?"
+          else
+            echo "rustup missing, trying rustup-init"
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh && \
+              sh /tmp/rustup-init.sh -y --default-toolchain 1.98.0 --profile minimal --component rust-src --no-modify-path 2>&1 | tail -5
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          echo "== ipsw (direct release, no tap) =="
+          if ! command -v ipsw >/dev/null; then
+            mkdir -p "$HOME/.local/bin"
+            curl -fL --retry 3 -o /tmp/ipsw.tar.gz "https://github.com/blacktop/ipsw/releases/download/v3.1.741/ipsw_3.1.741_macOS_arm64.tar.gz" 2>&1 | tail -3
+            tar -xzf /tmp/ipsw.tar.gz -C "$HOME/.local/bin" && chmod +x "$HOME/.local/bin/ipsw"
+            export PATH="$HOME/.local/bin:$PATH"
+            printf '%s\n' "$HOME/.local/bin" >> "$CM_ENV"
+          fi
+          echo "== verify =="
+          ok=1
+          for t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool \
+                   mformat mcopy ipsw cargo rustc; do
+            if p=$(command -v "$t" 2>/dev/null); then echo "ok   $t -> $p"; else echo "MISS $t"; ok=0; fi
+          done
+          for t in lld-link llvm-lib llvm-rc llvm-nm llvm-objcopy; do
+            if [ -x "/opt/homebrew/opt/llvm/bin/$t" ] || [ -x "/opt/homebrew/opt/lld/bin/$t" ]; then echo "ok   $t"; else echo "MISS $t"; ok=0; fi
+          done
+          echo "cargo: $(cargo --version 2>&1 || echo none)"
+          echo "ok=$ok"
+          sw_vers; xcodebuild -version 2>&1 | head -2; uname -m
+          [ "$ok" = 1 ]
+
+      - name: checkout the three trees as siblings
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/03-checkout.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          mkdir -p "$WORK"
+          cd "$WORK"
+          git clone --depth 1 --branch "$DEVICE_REF" --recurse-submodules --shallow-submodules "$DEVICE_REPO" device
+          git clone --depth 1 --branch "$UEFI_REF" --recurse-submodules --shallow-submodules "$UEFI_REPO" uefi-sheng
+          git init -q UniXNU
+          git -C UniXNU remote add origin https://github.com/UniXNU/UniXNU.git
+          git -C UniXNU fetch --depth 1 origin "$UNIXNU_REF"
+          git -C UniXNU checkout -q FETCH_HEAD
+          git -C UniXNU submodule update --init --recursive --depth 1
+          echo "device   $(git -C device rev-parse HEAD)"
+          echo "uefi     $(git -C uefi-sheng rev-parse HEAD)"
+          echo "uniXNU   $(git -C UniXNU rev-parse HEAD)"
+          ls -1 "$WORK"
+
+      - name: verify the device tree is the T0 baseline
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/04-baseline.txt"
+          exec > >(tee -a "$L") 2>&1
+          cd "$WORK/device"
+          python3 - <<'PY'
+          import pathlib, sys, tomllib
+          board = tomllib.load(open('board.toml', 'rb'))
+          args = board['payload']['kernel_args']
+          profile = board['payload'].get('os_profile') or board.get('os_profile')
+          print('kernel_args =', len(args))
+          print('os_profile  =', profile)
+          bad = []
+          if len(args) != 47:
+              bad.append('kernel_args is %d, expected 47 (wrong device tree)' % len(args))
+          if profile != 'ipados-27.0.1-24A446':
+              bad.append('os_profile is %r, expected ipados-27.0.1-24A446' % (profile,))
+          for f in ('package/WifiFirmware.c', 'package/BootWatchdogPolicy.c', 'scripts/package.sh', 'seed/data.dbr.enc'):
+              if not pathlib.Path(f).is_file():
+                  bad.append('missing ' + f)
+          if bad:
+              print('\n'.join(bad)); sys.exit(1)
+          print('device tree matches the T0 baseline')
+          PY
+          grep -A7 'id = "Adreno740"' ../UniXNU/components.toml | head -10
+
+      - name: platform seed sanity
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/05-seed-check.txt"
+          exec > >(tee -a "$L") 2>&1
+          if ! [[ "${UNIXNU_UNIQUE_CHIP_ID:-}" =~ ^[0-9a-fA-F]{8}$ ]]; then
+            echo 'Set UNIXNU_UNIQUE_CHIP_ID (8 hex digits) in the sheng-secrets variable group.' >&2
+            exit 1
+          fi
+          echo "platform seed present (8 hex digits)"
+
+      - name: decrypt and install the preserved Data seed
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/06-seed.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          [ -f "$WORK/device/seed/data.dbr.enc" ] || { echo 'seed/data.dbr.enc missing' >&2; exit 1; }
+          [ -n "${SEED_PASSPHRASE:-}" ] || { echo 'SEED_PASSPHRASE is not set' >&2; exit 1; }
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
+            -in "$WORK/device/seed/data.dbr.enc" -out "$WORK/data.dbr" -pass env:SEED_PASSPHRASE
+          bytes=$(wc -c < "$WORK/data.dbr")
+          echo "decrypted seed: $bytes bytes"
+          shasum -a 256 "$WORK/data.dbr"
+          dest="$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime"
+          mkdir -p "$dest"
+          cp "$WORK/data.dbr" "$dest/data.dbr"
+          ls -l "$dest"
+
+      - name: pin Adreno740 to the fence-fix revision
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07-adreno.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          cd "$WORK/UniXNU"
+          python3 - <<'PY'
+          import os, pathlib, re
+          path = pathlib.Path('components.toml')
+          text = path.read_text()
+          blocks = re.split(r'(?=^\[\[component\]\])', text, flags=re.M)
+          hit, out = 0, []
+          for block in blocks:
+              if re.search(r'^id = "Adreno740"', block, re.M):
+                  block = re.sub(r'^repository = ".*"', 'repository = "%s"' % os.environ['ADRENO740_REPO'], block, count=1, flags=re.M)
+                  block = re.sub(r'^revision = ".*"', 'revision = "%s"' % os.environ['ADRENO740_REV'], block, count=1, flags=re.M)
+                  hit += 1
+              out.append(block)
+          if not hit:
+              raise SystemExit('Adreno740 component not found in components.toml')
+          path.write_text(''.join(out))
+          print('Adreno740 ->', os.environ['ADRENO740_REPO'], os.environ['ADRENO740_REV'])
+          PY
+          grep -A7 'id = "Adreno740"' components.toml | head -10
+          # components.toml alone does NOT move the build: the packager compiles
+          # drivers/Adreno740 straight out of the checked-out submodule (verified 11-13 18:05:
+          # the manifest still recorded 6fa7bae while components.toml said 0b28a0e5). Move the
+          # submodule itself: rewrite .gitmodules, retarget the gitlink, sync, re-checkout.
+          git config -f .gitmodules submodule.drivers/Adreno740.url "$ADRENO740_REPO"
+          git add .gitmodules
+          git update-index --cacheinfo "160000,$ADRENO740_REV,drivers/Adreno740"
+          git submodule sync --recursive
+          git submodule update --init --depth 1 drivers/Adreno740
+          head=$(git -C drivers/Adreno740 rev-parse HEAD)
+          echo "drivers/Adreno740 HEAD = $head"
+          [ "$head" = "$ADRENO740_REV" ] || { echo "Adreno740 pin did not take: $head" >&2; exit 1; }
+          git -C drivers/Adreno740 log -1 --format='%H %s'
+          git status --porcelain | head -10
+
+      - name: fix the upstream mesa patch header
+        script: |
+          # UniXNU@82b847c4 ships patches/mesa/turnip-frame-diagnostics.patch whose first file
+          # ("tu_frame_diagnostic.h") is a new file but carries no "new file mode" line. With -p1
+          # git strips "--- /dev/null" to "dev/null" and aborts with
+          #   error: dev/null: No such file or directory
+          # (reproduced locally with git 2.55). Nothing else in the build is touched; the rest of
+          # the patch and all 81 kernel patches apply cleanly.
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/08a-mesa-patch.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          p="$WORK/UniXNU/patches/mesa/turnip-frame-diagnostics.patch"
+          [ -f "$p" ] || { echo "missing $p"; exit 1; }
+          shasum -a 256 "$p"
+          python3 - "$p" <<'PY'
+          import sys, pathlib
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text()
+          marker = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\n--- /dev/null'
+          patched = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\nnew file mode 100644\n--- /dev/null'
+          if 'new file mode 100644\n--- /dev/null' in text:
+              print('already carries new file mode; nothing to do')
+          elif marker not in text:
+              raise SystemExit('unexpected patch layout; refusing to rewrite')
+          else:
+              path.write_text(text.replace(marker, patched, 1))
+              print('inserted "new file mode 100644" for tu_frame_diagnostic.h')
+          PY
+          shasum -a 256 "$p"
+          sed -n '1,6p' "$p"
+
+      - name: apply the historical UEFI ramdisk and menu probes
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07d-uefi-adaptations.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          # Reuse the exact historical scripts from F:\unixnu\patch\ci (kept in ci/ in the device repo).
+          # apply_ramdisk: find the payload FAT inside the ABL-concatenated initrd.
+          # apply_probe: read-only BlockIo/DiskIo/SimpleFileSystem/LBA0 counters in the menu title.
+          python3 "$WORK/device/ci/apply_ramdisk.py" "$WORK/UniXNU/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c"
+          python3 "$WORK/device/ci/apply_probe.py" "$WORK/UniXNU/package/UniXNUPkg/Library/UniXNULib/Config.c"
+          grep -n 'FindFatBootSector' "$WORK/UniXNU/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c"
+          grep -n 'mProbeBlock' "$WORK/UniXNU/package/UniXNUPkg/Library/UniXNULib/Config.c" | head -5
+
+      - name: install WCN7850 firmware (linux-firmware, pinned)
+        script: |
+          # device/scripts/build-wifi-userspace.py reads firmware/wcn7850/{amss,m3,board-2}.bin.
+          # The repo ships only manifest.json (the blobs stay out), so fetch the exact upstream
+          # files from linux-firmware at a pinned commit and verify them against the manifest
+          # sizes and SHA-256 before the package step runs.
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07b-wifi-firmware.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          REF=286e9e6c952493e36310a054ff2a0327ab8108a7
+          BASE="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/ath12k/WCN7850/hw2.0"
+          DST="$WORK/device/firmware/wcn7850"
+          mkdir -p "$DST"
+          for f in amss.bin m3.bin board-2.bin; do
+            echo "== $f"
+            curl -fsSL --retry 4 --retry-delay 2 -o "$DST/$f" "$BASE/$f?id=$REF"
+            ls -l "$DST/$f"
+          done
+          python3 - "$DST" <<'PY'
+          import hashlib, json, pathlib, sys
+          dst = pathlib.Path(sys.argv[1])
+          manifest = json.loads((dst / 'manifest.json').read_text())['files']
+          bad = []
+          for name, meta in manifest.items():
+              p = dst / name
+              if not p.is_file():
+                  bad.append(name + ': missing')
+                  continue
+              data = p.read_bytes()
+              digest = hashlib.sha256(data).hexdigest()
+              ok = len(data) == meta['bytes'] and digest == meta['sha256']
+              print(f"{name:12} {len(data):>9} {digest} {'OK' if ok else 'MISMATCH'}")
+              if not ok:
+                  bad.append(name)
+          if bad:
+              raise SystemExit('firmware mismatch: ' + ', '.join(bad))
+          PY
+
+      - name: fetch Ath12kWifi locked sources (linux / freebsd / wpa_supplicant)
+        script: |
+          # device/scripts/build-wifi-userspace.py -> drivers/Ath12kWifi/tools/build-supplicant.py
+          #   -> prepare-supplicant.py -> fetch-sources.py --check
+          # deps/ is not committed (sparse upstream checkouts + a 3 MB tarball), so the check
+          # aborts with "missing source: .../drivers/Ath12kWifi/deps/linux". Resolve the locked
+          # versions here, once, before the package step.
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07c-ath12k-sources.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          cd "$WORK/device/drivers/Ath12kWifi"
+          echo "== source-lock =="
+          python3 -c "import json;d=json.load(open('tools/source-lock.json'));print({k:(v.get('commit') or v.get('sha256')) if isinstance(v,dict) else v for k,v in d.items()})"
+          echo "== materialise deps =="
+          python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess, tarfile, urllib.request
+
+          root = pathlib.Path('.').resolve()
+          lock = json.loads((root / 'tools/source-lock.json').read_text())
+          deps = root / 'deps'
+          deps.mkdir(exist_ok=True)
+
+          for name in ('linux', 'freebsd'):
+              src = lock[name]
+              d = deps / name
+              if not d.exists():
+                  # tools/fetch-sources.py runs `git sparse-checkout add /dir/ ...`, which git rejects
+                  # in cone mode: "specify directories rather than patterns (no leading slash)".
+                  # A plain depth-1 checkout lands on the exact same locked commit, so materialise it
+                  # here; then switch that clone to NON-cone sparse checkout seeded with the same
+                  # patterns, so the later upstream `sparse-checkout add` call succeeds instead of
+                  # aborting the build (build-ath12k-wifi.py calls fetch-sources.sh again).
+                  subprocess.run(['git', 'clone', '--depth', '1', '--branch', src['ref'],
+                                  src['url'], str(d)], check=True)
+              head = subprocess.run(['git', '-C', str(d), 'rev-parse', 'HEAD'],
+                                    capture_output=True, text=True, check=True).stdout.strip()
+              print(f"{name}: HEAD {head}")
+              if head != src['commit']:
+                  raise SystemExit(f"{name}: expected {src['commit']}, found {head}")
+
+              subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckoutCone', 'false'], check=True)
+              subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckout', 'true'], check=True)
+              info = d / '.git/info/sparse-checkout'
+              info.parent.mkdir(parents=True, exist_ok=True)
+              info.write_text('\n'.join(src['paths']) + '\n')
+              subprocess.run(['git', '-C', str(d), 'read-tree', '-mu', 'HEAD'], check=True)
+              missing = [p for p in src['required'] if not (d / p).is_file()]
+              if missing:
+                  raise SystemExit(f"{name}: sparse checkout dropped required files: {missing[:4]}")
+              print(f"{name}: non-cone sparse checkout with {len(src['paths'])} patterns, required files present")
+
+          s = lock['supplicant']
+          archive = deps / s['archive']
+          if not archive.exists():
+              tmp = archive.with_suffix('.part')
+              with urllib.request.urlopen(s['url'], timeout=60) as r, tmp.open('wb') as out:
+                  while chunk := r.read(1 << 20):
+                      out.write(chunk)
+              tmp.replace(archive)
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          print(f"supplicant: {digest}")
+          if digest != s['sha256']:
+              raise SystemExit('supplicant archive hash mismatch')
+
+          target = deps / s['directory']
+          if not target.exists():
+              with tarfile.open(archive) as package:
+                  for member in package.getmembers():
+                      path = (deps / member.name).resolve()
+                      if (not (member.isfile() or member.isdir())
+                              or target.resolve() not in (path, *path.parents)):
+                          raise SystemExit(f'unexpected archive member: {member.name}')
+                  package.extractall(deps)
+          print('deps ready')
+          PY
+          echo "== upstream check =="
+          python3 tools/fetch-sources.py --check
+          cat out/source-identity.json
+
+      - name: install the process and UI report probe
+        script: |
+          set -euo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07e-process-ui-probe.txt"
+          exec > >(tee -a "$L") 2>&1
+          test -f "$WORK/device/ci/NativeUfs.probe15-fence.cpp"
+          test -f "$WORK/device/drivers/ShengUfs/NativeUfs.cpp"
+          cp "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" "$DIAG/NativeUfs.before-probe15.cpp"
+          cp "$WORK/device/ci/NativeUfs.probe15-fence.cpp" "$WORK/device/drivers/ShengUfs/NativeUfs.cpp"
+          grep -n 'processReportThread' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
+          grep -n 'native_adreno_fence_wake' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
+
+      - name: instrument Adreno submit diagnostics
+        script: |
+          set -euo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07f-adreno-submit-probe.txt"
+          exec > >(tee -a "$L") 2>&1
+          python3 "$WORK/device/ci/patch_submit_fail_ci.py" "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp"
+          grep -n 'native_adreno_submit_fail' "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp" | head -3
+
+      - name: package
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/08-package.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          # $CM_ENV appends were not visible to later steps, so build the PATH here as well.
+          # cargo/rustc live in the keg-only rustup prefix; ipsw went to ~/.local/bin.
+          RUSTUP_BIN="$(brew --prefix rustup 2>/dev/null)/bin"
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH"
+          echo "PATH=$PATH"
+          echo "cargo -> $(command -v cargo || echo MISSING)"
+          echo "rustc -> $(command -v rustc || echo MISSING)"
+          echo "ipsw  -> $(command -v ipsw || echo MISSING)"
+          command -v cargo >/dev/null || { echo 'cargo still missing; aborting before a 40-minute build' >&2; exit 1; }
+          cd "$WORK/device"
+          # BaseTools is built by package/build.sh with `make -j$(nproc) >/dev/null`; on this EDK2
+          # feed (mu_basecore cfb93724) the parallel host-tools build can lose the VfrCompile link
+          # race and abort with a message that is swallowed by that >/dev/null. The same commit
+          # builds cleanly serially (probe run 11-13 16:0x). Keep the default parallelism for the
+          # main build, but if package fails, finish BaseTools serially and retry once.
+          export JOBS="${JOBS:-4}"
+          set +e
+          scripts/package.sh --os 27 --uefi ../uefi-sheng
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            echo "== package.sh failed rc=$rc; repairing BaseTools serially"
+            for d in "$WORK"/UniXNU/out/feeds/mu_basecore-*/BaseTools/Source/C; do
+              [ -d "$d" ] || continue
+              echo "== serial make -C $d -j1"
+              make -C "$d" -j1 >> "$DIAG/08b-basetools.txt" 2>&1
+              echo "serial make rc=$? GenFw=$([ -x "$d/bin/GenFw" ] && echo yes || echo no)"
+            done
+            R="$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27"
+            for f in "$R/logs/package.log" "$R/logs/runtime.log"; do
+              [ -f "$f" ] && tail -200 "$f" > "$DIAG/08c-$(basename "$f").txt"
+            done
+            echo "== retry package.sh once"
+            scripts/package.sh --os 27 --uefi ../uefi-sheng
+            rc=$?
+          fi
+          exit $rc
+
+      - name: collect outputs
+        script: |
+          set -uo pipefail
+          mkdir -p "$DIAG" "$CM_BUILD_DIR/out"
+          L="$DIAG/09-outputs.txt"
+          exec > >(tee -a "$L") 2>&1
+          root="$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27"
+          echo "== tree under $root =="
+          find "$root" -maxdepth 2 -type f \( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json' \) -print -exec ls -l {} \; 2>/dev/null || true
+          rc=0
+          for f in boot/boot.img payload/payload.img kernel/kernel.macho package.manifest.json; do
+            if [ -f "$root/$f" ]; then
+              cp "$root/$f" "$CM_BUILD_DIR/out/$(basename "$f")"
+            else
+              echo "MISSING $f"; rc=1
+            fi
+          done
+          for f in "$CM_BUILD_DIR"/out/*; do [ -f "$f" ] && shasum -a 256 "$f"; done
+          ls -l "$CM_BUILD_DIR/out"
+          exit $rc
+
+    artifacts:
+      - out/diag/*.txt
+      - out/boot.img
+      - out/payload.img
+      - out/kernel.macho
+      - out/package.manifest.json
