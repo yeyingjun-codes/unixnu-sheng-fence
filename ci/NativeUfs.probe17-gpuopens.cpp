@@ -2477,16 +2477,12 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
                     (unsigned long long)published, (unsigned long long)clockUs));
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "metal publish stage=%u status=%08x kext=%08x registered=%u\n",
-                    &gMetalStage ? gMetalStage : 0,
-                    &gMetalStatus ? static_cast<unsigned>(gMetalStatus) : 0,
-                    &gMetalKext ? static_cast<unsigned>(gMetalKext) : 0,
-                    &gMetalRegistered ? gMetalRegistered : 0));
+                    gMetalStage, static_cast<unsigned>(gMetalStatus),
+                    static_cast<unsigned>(gMetalKext), gMetalRegistered));
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "addon stage=%d/%08x second=%d/%08x\n",
-                    &native_gpu_addon_stage ? native_gpu_addon_stage : 0,
-                    &native_gpu_addon_status ? static_cast<unsigned>(native_gpu_addon_status) : 0,
-                    &native_gpu_addon2_stage ? native_gpu_addon2_stage : 0,
-                    &native_gpu_addon2_status ? static_cast<unsigned>(native_gpu_addon2_status) : 0));
+                    native_gpu_addon_stage, static_cast<unsigned>(native_gpu_addon_status),
+                    native_gpu_addon2_stage, static_cast<unsigned>(native_gpu_addon2_status)));
   if (!&native_adreno_open_log_count || !&native_adreno_open_log || !&native_adreno_client_log) {
     snprintf (report + used, 8192 - used, "Adreno open/client records unavailable\n");
     panic ("%s", report);
