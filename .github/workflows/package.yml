@@ -298,6 +298,38 @@ jobs:
           echo "drivers/Adreno740 HEAD = $head"
           [ "$head" = "$ADRENO740_REV" ] || { echo "Adreno740 pin did not take: $head" >&2; exit 1; }
           git -C drivers/Adreno740 log -1 --format="%H %s"
+      - name: Pin AdrenoMetal to the render-runtime revision
+        working-directory: UniXNU
+        env:
+          ADRENOMETAL_REPO: https://github.com/UniXNU/AdrenoMetal.git
+          ADRENOMETAL_REV: c333f988df1196a19abbe756f6e199984300a487
+        run: |
+          set -e
+          python3 - <<'PY'
+          import os, pathlib, re
+          p = pathlib.Path('components.toml')
+          blocks = p.read_text().split('[[component]]')
+          out, pinned = [], False
+          for block in blocks:
+              if re.search(r'^id = "AdrenoMetal"', block, re.M):
+                  block = re.sub(r'^repository = .*$', 'repository = "%s"' % os.environ['ADRENOMETAL_REPO'], block, count=1, flags=re.M)
+                  block = re.sub(r'^revision = .*$', 'revision = "%s"' % os.environ['ADRENOMETAL_REV'], block, count=1, flags=re.M)
+                  pinned = True
+              out.append(block)
+          if not pinned:
+              raise SystemExit('AdrenoMetal component not found')
+          p.write_text('[[component]]'.join(out))
+          PY
+          git config -f .gitmodules submodule.drivers/AdrenoMetal.url "$ADRENOMETAL_REPO"
+          git add .gitmodules
+          git update-index --cacheinfo "160000,$ADRENOMETAL_REV,drivers/AdrenoMetal"
+          git submodule sync --recursive
+          git submodule update --init --depth 1 drivers/AdrenoMetal
+          head=$(git -C drivers/AdrenoMetal rev-parse HEAD)
+          echo "drivers/AdrenoMetal HEAD = $head"
+          [ "$head" = "$ADRENOMETAL_REV" ] || { echo "AdrenoMetal pin did not take: $head" >&2; exit 1; }
+          git -C drivers/AdrenoMetal log -1 --format="%H %s"
+
       - name: install the process and UI report probe
         working-directory: device
         run: |
