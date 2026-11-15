@@ -85,6 +85,21 @@ jobs:
             [ -f "/opt/homebrew/opt/llvm/bin/$t" ] || [ -f "/opt/homebrew/opt/lld/bin/$t" ] || { echo "missing tool: $t"; ok=0; }
           done
           [ "$ok" = 1 ]
+      - name: enforce Android boot image header v3
+        working-directory: device
+        run: |
+          set -e
+          python3 - <<'PY'
+          import pathlib, tomllib
+          p = pathlib.Path('board.toml')
+          s = p.read_text()
+          if '["bootimg"."image"]' not in s:
+              s = s.rstrip() + chr(10)*2 + '["bootimg"."image"]' + chr(10) + 'header_version = 3' + chr(10)
+              p.write_text(s)
+          assert tomllib.loads(p.read_text())['bootimg']['image']['header_version'] == 3
+          print('bootimg.image.header_version = 3')
+          PY
+
       - name: fix the upstream mesa patch header
         run: |
           set -e
