@@ -2128,6 +2128,10 @@ extern UfsAdrenoClientText native_adreno_client_text[8] __attribute__((weak_impo
 extern UfsAdrenoMetalDiag native_adreno_metal_diag __attribute__((weak_import));
 extern IOService *native_adreno_published_service (void) __attribute__((weak_import));
 extern uint64_t native_adreno_now_us (void) __attribute__((weak_import));
+extern volatile uint32_t gMetalStage, gMetalRegistered __attribute__((weak_import));
+extern volatile int gMetalKext, gMetalStatus __attribute__((weak_import));
+extern volatile int native_gpu_addon_stage, native_gpu_addon_status __attribute__((weak_import));
+extern volatile int native_gpu_addon2_stage, native_gpu_addon2_status __attribute__((weak_import));
 extern void boot_process_capture (void) __attribute__((weak_import));
 extern void boot_process_snapshot (void) __attribute__((weak_import));
 extern size_t boot_progress_spawn_rows (char *, size_t) __attribute__((weak_import));
@@ -2467,10 +2471,22 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
     reinterpret_cast<uintptr_t> (native_adreno_published_service ()) : 0;
   const uint64_t clockUs = native_adreno_now_us ? native_adreno_now_us () : 0;
   size_t used = static_cast<size_t> (snprintf (report, 8192,
-                    "NATIVE_UFS GPU client-open report v2 after %u s\n", delay));
+                    "NATIVE_UFS GPU client-open report v3 after %u s\n", delay));
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "published service=%llx clock_us=%llu\n",
                     (unsigned long long)published, (unsigned long long)clockUs));
+  used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                    "metal publish stage=%u status=%08x kext=%08x registered=%u\n",
+                    &gMetalStage ? gMetalStage : 0,
+                    &gMetalStatus ? static_cast<unsigned>(gMetalStatus) : 0,
+                    &gMetalKext ? static_cast<unsigned>(gMetalKext) : 0,
+                    &gMetalRegistered ? gMetalRegistered : 0));
+  used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                    "addon stage=%d/%08x second=%d/%08x\n",
+                    &native_gpu_addon_stage ? native_gpu_addon_stage : 0,
+                    &native_gpu_addon_status ? static_cast<unsigned>(native_gpu_addon_status) : 0,
+                    &native_gpu_addon2_stage ? native_gpu_addon2_stage : 0,
+                    &native_gpu_addon2_status ? static_cast<unsigned>(native_gpu_addon2_status) : 0));
   if (!&native_adreno_open_log_count || !&native_adreno_open_log || !&native_adreno_client_log) {
     snprintf (report + used, 8192 - used, "Adreno open/client records unavailable\n");
     panic ("%s", report);
