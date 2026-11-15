@@ -2097,12 +2097,37 @@ struct UfsAdrenoClientRecord {
   char name[20];
   uint32_t opens, refused, closes, slot, peak_mib, last_refusal;
 };
+struct UfsAdrenoAskerRecord {
+  char name[20];
+  uint32_t reads;
+};
+struct UfsAdrenoClientText {
+  char name[20];
+  char text[64];
+};
+struct UfsAdrenoMetalDiag {
+  uint32_t opens, busy, bad, closes, reports, property_reads, foreign_opens, foreign_type,
+    name_reads, calls, last_selector, last_status, ext_entries, ext_selector, ext_status,
+    ext_in, ext_out, tunnel_calls, probes, sel_bits[8], mb_maps, mb_calls, marks_total,
+    marks[16], chk_macf, chk_res, chk_type, type_pass_lo, type_pass_hi, attach_status,
+    inflight, inflight_since_calls, forced_unmaps;
+  char opener[3][17], reader[3][17], name_reader[17], starter[3][17];
+  char report[64], report2[64];
+  uint32_t grants;
+};
 static_assert (sizeof (UfsAdrenoOpenRecord) == 40, "Adreno open-record ABI");
 static_assert (sizeof (UfsAdrenoClientRecord) == 44, "Adreno client-record ABI");
+static_assert (sizeof (UfsAdrenoAskerRecord) == 24, "Adreno asker-record ABI");
+static_assert (sizeof (UfsAdrenoMetalDiag) == 524, "Adreno metal-diag ABI");
 extern "C" {
 extern UfsAdrenoOpenRecord native_adreno_open_log[8] __attribute__((weak_import));
 extern volatile uint32_t native_adreno_open_log_count __attribute__((weak_import));
 extern UfsAdrenoClientRecord native_adreno_client_log[8] __attribute__((weak_import));
+extern UfsAdrenoAskerRecord native_adreno_metal_askers[12] __attribute__((weak_import));
+extern UfsAdrenoClientText native_adreno_client_text[8] __attribute__((weak_import));
+extern UfsAdrenoMetalDiag native_adreno_metal_diag __attribute__((weak_import));
+extern IOService *native_adreno_published_service (void) __attribute__((weak_import));
+extern uint64_t native_adreno_now_us (void) __attribute__((weak_import));
 extern void boot_process_capture (void) __attribute__((weak_import));
 extern void boot_process_snapshot (void) __attribute__((weak_import));
 extern size_t boot_progress_spawn_rows (char *, size_t) __attribute__((weak_import));
@@ -2438,11 +2463,39 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
   IOSleep (delay * 1000);
   char *report = static_cast<char *> (IOMalloc (8192));
   if (!report) panic ("NATIVE_UFS GPU open report: allocation failed");
+  const uintptr_t published = native_adreno_published_service ?
+    reinterpret_cast<uintptr_t> (native_adreno_published_service ()) : 0;
+  const uint64_t clockUs = native_adreno_now_us ? native_adreno_now_us () : 0;
   size_t used = static_cast<size_t> (snprintf (report, 8192,
-                    "NATIVE_UFS GPU client-open report after %u s\n", delay));
+                    "NATIVE_UFS GPU client-open report v2 after %u s\n", delay));
+  used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                    "published service=%llx clock_us=%llu\n",
+                    (unsigned long long)published, (unsigned long long)clockUs));
   if (!&native_adreno_open_log_count || !&native_adreno_open_log || !&native_adreno_client_log) {
     snprintf (report + used, 8192 - used, "Adreno open/client records unavailable\n");
     panic ("%s", report);
+  }
+  if (&native_adreno_metal_diag) {
+    used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                      "metal name_reads=%u property_reads=%u markers=%u reports=%u calls=%u foreign=%u\n",
+                      native_adreno_metal_diag.name_reads, native_adreno_metal_diag.property_reads,
+                      native_adreno_metal_diag.marks_total, native_adreno_metal_diag.reports,
+                      native_adreno_metal_diag.calls, native_adreno_metal_diag.foreign_opens));
+    used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                      "metal name_reader=%.17s starter=%.17s,%.17s,%.17s\n",
+                      native_adreno_metal_diag.name_reader, native_adreno_metal_diag.starter[0],
+                      native_adreno_metal_diag.starter[1], native_adreno_metal_diag.starter[2]));
+    used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                      "plugin report=%.64s\nplugin report2=%.64s\n",
+                      native_adreno_metal_diag.report, native_adreno_metal_diag.report2));
+  }
+  if (&native_adreno_metal_askers) {
+    for (unsigned row = 0; row < 12 && used < 7000; ++row) {
+      const UfsAdrenoAskerRecord &entry = native_adreno_metal_askers[row];
+      if (!entry.name[0]) continue;
+      used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                        "metal asker %.20s reads=%u\n", entry.name, entry.reads));
+    }
   }
   const uint32_t count = native_adreno_open_log_count;
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
@@ -2464,6 +2517,14 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
                       "client %.20s opens=%u refused=%u closes=%u slot=%u peak=%uMiB last=%08x\n",
                       entry.name, entry.opens, entry.refused, entry.closes,
                       entry.slot, entry.peak_mib, entry.last_refusal));
+  }
+  if (&native_adreno_client_text) {
+    for (unsigned row = 0; row < 8 && used < 7500; ++row) {
+      const UfsAdrenoClientText &entry = native_adreno_client_text[row];
+      if (!entry.name[0] && !entry.text[0]) continue;
+      used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                        "client text %.20s %.64s\n", entry.name, entry.text));
+    }
   }
   panic ("%s", report);
 }
