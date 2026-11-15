@@ -2297,3 +2297,11 @@ extern "C" void sheng_gpu_power_probe(void) {
     if (kernel_thread_start(probeThread, nullptr, &thread) == KERN_SUCCESS) thread_deallocate(thread);
     else native_gpu_power_stage = 0xdead;
 }
+// Read-only diagnostics for the Metal registry publication path. The stage
+// variables intentionally remain private to this translation unit.
+extern "C" void native_metal_publication_snapshot(uint32_t *stage, uint32_t *registered, int *kext, int *status) {
+    if (stage) *stage = gMetalStage;
+    if (registered) *registered = gMetalRegistered;
+    if (kext) *kext = gMetalKext;
+    if (status) *status = gMetalStatus;
+}
