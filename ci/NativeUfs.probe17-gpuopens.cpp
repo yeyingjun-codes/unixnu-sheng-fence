@@ -2128,8 +2128,7 @@ extern UfsAdrenoClientText native_adreno_client_text[8] __attribute__((weak_impo
 extern UfsAdrenoMetalDiag native_adreno_metal_diag __attribute__((weak_import));
 extern IOService *native_adreno_published_service (void) __attribute__((weak_import));
 extern uint64_t native_adreno_now_us (void) __attribute__((weak_import));
-extern volatile uint32_t gMetalStage, gMetalRegistered __attribute__((weak_import));
-extern volatile int gMetalKext, gMetalStatus __attribute__((weak_import));
+extern void native_metal_publication_snapshot (uint32_t *, uint32_t *, int *, int *) __attribute__((weak_import));
 extern volatile int native_gpu_addon_stage, native_gpu_addon_status __attribute__((weak_import));
 extern volatile int native_gpu_addon2_stage, native_gpu_addon2_status __attribute__((weak_import));
 extern void boot_process_capture (void) __attribute__((weak_import));
@@ -2475,10 +2474,14 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "published service=%llx clock_us=%llu\n",
                     (unsigned long long)published, (unsigned long long)clockUs));
+  uint32_t metalStage = 0, metalRegistered = 0;
+  int metalKext = -99, metalStatus = 0;
+  if (native_metal_publication_snapshot)
+    native_metal_publication_snapshot (&metalStage, &metalRegistered, &metalKext, &metalStatus);
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "metal publish stage=%u status=%08x kext=%08x registered=%u\n",
-                    gMetalStage, static_cast<unsigned>(gMetalStatus),
-                    static_cast<unsigned>(gMetalKext), gMetalRegistered));
+                    metalStage, static_cast<unsigned>(metalStatus),
+                    static_cast<unsigned>(metalKext), metalRegistered));
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "addon stage=%d/%08x second=%d/%08x\n",
                     native_gpu_addon_stage, static_cast<unsigned>(native_gpu_addon_status),
