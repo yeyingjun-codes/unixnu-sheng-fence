@@ -1,0 +1,383 @@
+name: package-positive
+
+# scripts/package.sh of this repository on a macOS runner, with the UniXNU and uefi-sheng
+# checkouts beside it, the layout board.toml names. The platform seed comes from the
+# repository secret UNIXNU_UNIQUE_CHIP_ID and is baked into the images, so the run's
+# artifacts belong to one device alone: download them, then delete the run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: "OS profile of the images"
+        type: choice
+        options: ["27", "26", "17"]
+        default: "27"
+      init_data:
+        description: "Create a NEW installation seed if no saved seed exists (iPadOS 27 only)"
+        type: boolean
+        default: false
+      data_seed_url:
+        description: "Optional original data.dbr URL for an existing installation; otherwise use the saved cache"
+        type: string
+      data_seed_sha256:
+        description: "Required SHA-256 when data_seed_url is supplied"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: macos-latest
+    timeout-minutes: 360
+    # macos-26 is not offered to this account; macos-latest carries the same
+    # Xcode 26.6 / iPhoneOS26.5 SDK the T0 build compiled against.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: chrndianjidakai-collab/UniXNU-sheng
+          ref: 8ec842f38c21ef1d73e12000fae16df7442e0c73
+          path: device
+          submodules: recursive
+      - name: import CI adaptations and the preserved seed
+        working-directory: device
+        run: |
+          set -e
+          mkdir -p ci seed
+          for f in apply_ramdisk.py apply_probe.py NativeUfs.probe15-fence.cpp patch_submit_fail_ci.py; do
+            curl -fsSL "https://raw.githubusercontent.com/yeyingjun-codes/unixnu-sheng-fence/main/ci/$f" -o "ci/$f"
+          done
+          curl -fsSL "https://raw.githubusercontent.com/yeyingjun-codes/unixnu-sheng-fence/main/seed/data.dbr.enc" -o seed/data.dbr.enc
+          ls -l ci seed/data.dbr.enc
+      - uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          ref: 82b847c4ac3f68a57024b3082ffa3a03442defd9 # Wi-Fi runtime and Data firmware integration
+          path: UniXNU
+          submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          repository: UniXNU/uefi-sheng
+          path: uefi-sheng
+          submodules: recursive
+      - name: tools
+        run: |
+          brew install dtc llvm lld cmake mtools ninja glslang shaderc spirv-tools bison pkgconf rustup blacktop/tap/ipsw
+          {
+            echo "$HOME/.cargo/bin"
+            echo "/opt/homebrew/opt/llvm/bin"
+            echo "/opt/homebrew/opt/lld/bin"
+            echo "/opt/homebrew/opt/bison/bin"
+          } >> "$GITHUB_PATH"
+          rustup toolchain install 1.98.0 --profile minimal --component rust-src
+          # Fail fast, naming the tool, before forty minutes of build.
+          ok=1
+          for t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool \
+                   mformat mcopy ipsw; do
+            command -v "$t" >/dev/null || { echo "missing tool: $t"; ok=0; }
+          done
+          for t in lld-link llvm-lib llvm-rc llvm-nm llvm-objcopy; do
+            [ -f "/opt/homebrew/opt/llvm/bin/$t" ] || [ -f "/opt/homebrew/opt/lld/bin/$t" ] || { echo "missing tool: $t"; ok=0; }
+          done
+          [ "$ok" = 1 ]
+      - name: fix the upstream mesa patch header
+        run: |
+          set -e
+          p="$GITHUB_WORKSPACE/UniXNU/patches/mesa/turnip-frame-diagnostics.patch"
+          [ -f "$p" ] || { echo "missing $p"; exit 1; }
+          python3 - "$p" <<'PYFIX'
+          import sys, pathlib
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text()
+          marker = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\n--- /dev/null'
+          patched = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\nnew file mode 100644\n--- /dev/null'
+          if 'new file mode 100644\n--- /dev/null' in text:
+              print('already carries new file mode; nothing to do')
+          elif marker not in text:
+              raise SystemExit('unexpected patch layout; refusing to rewrite')
+          else:
+              path.write_text(text.replace(marker, patched, 1))
+              print('inserted "new file mode 100644" for tu_frame_diagnostic.h')
+          PYFIX
+
+      - name: platform seed
+        env:
+          seed: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+        run: |
+          if ! [[ "$seed" =~ ^[0-9a-fA-F]{8}$ ]]; then
+            echo 'Set the repository secret UNIXNU_UNIQUE_CHIP_ID: the platform seed of the device, 8 hex digits.' >&2
+            exit 1
+          fi
+      - name: seed cache identity
+        id: seed-key
+        env:
+          SEED: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('key=data-seed-v1-' + hashlib.sha256(os.environ['SEED'].encode()).hexdigest()[:16] + '\n')
+          PY
+      - uses: actions/cache/restore@v4
+        id: data-cache
+        if: inputs.os == '27'
+        with:
+          path: |
+            UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
+            UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/inputs.json
+          key: ${{ steps.seed-key.outputs.key }}-${{ inputs.os }}
+      - name: decrypt the preserved installation seed
+        if: inputs.os == '27'
+        env:
+          SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
+        run: |
+          if [ -f device/seed/data.dbr.enc ] && [ -n "${SEED_PASSPHRASE:-}" ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
+              -in device/seed/data.dbr.enc -out "$RUNNER_TEMP/data.dbr" -pass env:SEED_PASSPHRASE
+            echo "decrypted the preserved seed: $(wc -c < "$RUNNER_TEMP/data.dbr") bytes"
+          else
+            echo "no encrypted seed available; falling back to cache/init_data"
+          fi
+      - name: prepare preserved Data seed
+        if: inputs.os == '27'
+        env:
+          INIT_DATA: ${{ inputs.init_data }}
+          PRESERVED_SEED: ${{ runner.temp }}/data.dbr
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, urllib.request
+          inputs = json.loads(pathlib.Path(os.environ['GITHUB_EVENT_PATH']).read_text())['inputs']
+          path = pathlib.Path('UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr')
+          url, digest = inputs.get('data_seed_url', ''), inputs.get('data_seed_sha256', '').lower()
+          if url:
+              print('::add-mask::' + url)
+              if not url.startswith('https://') or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
+                  raise SystemExit('A seed URL requires HTTPS and its SHA-256')
+              with urllib.request.urlopen(url, timeout=120) as source:
+                  data = source.read(64 * 1024 * 1024 + 1)
+              if len(data) > 64 * 1024 * 1024 or hashlib.sha256(data).hexdigest() != digest:
+                  raise SystemExit('Seed size or SHA-256 mismatch')
+              if path.exists() and path.read_bytes() != data:
+                  raise SystemExit('Saved seed differs; preserve and inspect it instead of replacing this installation')
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(data)
+          preserved = pathlib.Path(os.environ.get('PRESERVED_SEED') or '')
+          if not path.is_file() and str(preserved) not in ('', '.') and preserved.is_file():
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(preserved.read_bytes())
+              print('used the preserved installation seed at', preserved)
+          if not path.is_file() and os.environ['INIT_DATA'] != 'true':
+              raise SystemExit('No saved seed. Supply the ORIGINAL seed for an existing installation, or select init_data for a FIRST installation')
+          PY
+      - name: install WCN7850 firmware (linux-firmware, pinned)
+        working-directory: device
+        run: |
+          set -e
+          REF=286e9e6c952493e36310a054ff2a0327ab8108a7
+          BASE="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/ath12k/WCN7850/hw2.0"
+          DST="$GITHUB_WORKSPACE/device/firmware/wcn7850"
+          mkdir -p "$DST"
+          for f in amss.bin m3.bin board-2.bin; do
+            echo "== $f"
+            curl -fsSL --retry 4 --retry-delay 2 -o "$DST/$f" "$BASE/$f?id=$REF"
+            ls -l "$DST/$f"
+          done
+          python3 - "$DST" <<'PYFW'
+          import hashlib, json, pathlib, sys
+          dst = pathlib.Path(sys.argv[1])
+          manifest = json.loads((dst / 'manifest.json').read_text())['files']
+          bad = []
+          for name, meta in manifest.items():
+              p = dst / name
+              if not p.is_file():
+                  bad.append(name + ': missing')
+                  continue
+              data = p.read_bytes()
+              digest = hashlib.sha256(data).hexdigest()
+              ok = len(data) == meta['bytes'] and digest == meta['sha256']
+              print(f"{name:12} {len(data):>9} {digest} {'OK' if ok else 'MISMATCH'}")
+              if not ok:
+                  bad.append(name)
+          if bad:
+              raise SystemExit('firmware mismatch: ' + ', '.join(bad))
+          PYFW
+
+      - name: fetch Ath12kWifi locked sources (linux / freebsd / wpa_supplicant)
+        working-directory: device/drivers/Ath12kWifi
+        run: |
+          set -e
+          python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess, tarfile, urllib.request
+          root = pathlib.Path('.').resolve()
+          lock = json.loads((root / 'tools/source-lock.json').read_text())
+          deps = root / 'deps'
+          deps.mkdir(exist_ok=True)
+          for name in ('linux', 'freebsd'):
+              src = lock[name]
+              d = deps / name
+              if not d.exists():
+                  subprocess.run(['git', 'clone', '--depth', '1', '--branch', src['ref'],
+                                  src['url'], str(d)], check=True)
+              head = subprocess.run(['git', '-C', str(d), 'rev-parse', 'HEAD'],
+                                    capture_output=True, text=True, check=True).stdout.strip()
+              print(f"{name}: HEAD {head}")
+              if head != src['commit']:
+                  raise SystemExit(f"{name}: expected {src['commit']}, found {head}")
+              subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckoutCone', 'false'], check=True)
+              subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckout', 'true'], check=True)
+              info = d / '.git/info/sparse-checkout'
+              info.parent.mkdir(parents=True, exist_ok=True)
+              info.write_text('\n'.join(src['paths']) + '\n')
+              subprocess.run(['git', '-C', str(d), 'read-tree', '-mu', 'HEAD'], check=True)
+              missing = [p for p in src['required'] if not (d / p).is_file()]
+              if missing:
+                  raise SystemExit(f"{name}: sparse checkout dropped required files: {missing[:4]}")
+              print(f"{name}: non-cone sparse checkout with {len(src['paths'])} patterns")
+          s = lock['supplicant']
+          archive = deps / s['archive']
+          if not archive.exists():
+              tmp = archive.with_suffix('.part')
+              with urllib.request.urlopen(s['url'], timeout=60) as r, tmp.open('wb') as out:
+                  while chunk := r.read(1 << 20):
+                      out.write(chunk)
+              tmp.rename(archive)
+          data = archive.read_bytes()
+          digest = hashlib.sha256(data).hexdigest()
+          if digest != s['sha256']:
+              raise SystemExit(f"supplicant: sha256 {digest} != {s['sha256']}")
+          print(f"supplicant: sha256 {digest} OK")
+          target = deps / 'wpa_supplicant-2.12'
+          if not target.exists():
+              with tarfile.open(archive) as package:
+                  bad=[]
+                  for member in package.getmembers():
+                      path = (deps/member.name).resolve()
+                      if (not (member.isfile() or member.isdir())) or target.resolve() not in (path,*path.parents):
+                          bad.append(member.name)
+                  if bad:
+                      raise SystemExit(f'supplicant: rejected members {bad[:5]}')
+                  package.extractall(deps)
+          print('deps ready')
+          PY
+
+      - name: apply the historical UEFI ramdisk FAT scan and menu probes
+        working-directory: UniXNU
+        run: |
+          set -e
+          curl -fsSL "https://raw.githubusercontent.com/yeyingjun-codes/unixnu-sheng-fence/main/ci/apply_ramdisk.py" -o /tmp/apply_ramdisk.py
+          curl -fsSL "https://raw.githubusercontent.com/yeyingjun-codes/unixnu-sheng-fence/main/ci/apply_probe.py" -o /tmp/apply_probe.py
+          python3 /tmp/apply_ramdisk.py package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c
+          python3 /tmp/apply_probe.py package/UniXNUPkg/Library/UniXNULib/Config.c
+          grep -n 'FindFatBootSector' package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c | head -3
+          grep -n 'mProbeBlock' package/UniXNUPkg/Library/UniXNULib/Config.c | head -3
+
+      - name: Pin Adreno740 to the fence-fix revision
+        working-directory: UniXNU
+        env:
+          ADRENO740_REPO: https://github.com/yeyingjun-codes/adreno740-fence.git
+          ADRENO740_REV: 0b28a0e5b66501f55d71a885ab3f5f21467755a1
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+          path = pathlib.Path('components.toml')
+          blocks = path.read_text().split('[[component]]')
+          out, pinned = [], False
+          for block in blocks:
+              if re.search(r'^id = "Adreno740"', block, re.M):
+                  block = re.sub(r'^repository = .*$',
+                                 'repository = "%s"' % os.environ['ADRENO740_REPO'], block, count=1, flags=re.M)
+                  block = re.sub(r'^revision = .*$',
+                                 'revision = "%s"' % os.environ['ADRENO740_REV'], block, count=1, flags=re.M)
+                  pinned = True
+                  print('Adreno740 ->', os.environ['ADRENO740_REPO'], os.environ['ADRENO740_REV'])
+              out.append(block)
+          if not pinned:
+              raise SystemExit('Adreno740 component not found in components.toml')
+          path.write_text('[[component]]'.join(out))
+          PY
+          grep -A7 'id = "Adreno740"' components.toml | head -10
+          git config -f .gitmodules submodule.drivers/Adreno740.url "$ADRENO740_REPO"
+          git add .gitmodules
+          git update-index --cacheinfo "160000,$ADRENO740_REV,drivers/Adreno740"
+          git submodule sync --recursive
+          git submodule update --init --depth 1 drivers/Adreno740
+          head=$(git -C drivers/Adreno740 rev-parse HEAD)
+          echo "drivers/Adreno740 HEAD = $head"
+          [ "$head" = "$ADRENO740_REV" ] || { echo "Adreno740 pin did not take: $head" >&2; exit 1; }
+          git -C drivers/Adreno740 log -1 --format="%H %s"
+      - name: install the process and UI report probe
+        working-directory: device
+        run: |
+          set -e
+          test -f ci/NativeUfs.probe15-fence.cpp
+          test -f drivers/ShengUfs/NativeUfs.cpp
+          cp drivers/ShengUfs/NativeUfs.cpp /tmp/NativeUfs.before-probe15.cpp
+          cp ci/NativeUfs.probe15-fence.cpp drivers/ShengUfs/NativeUfs.cpp
+          grep -n 'processReportThread' drivers/ShengUfs/NativeUfs.cpp | head -3
+          grep -n 'native_adreno_fence_wake' drivers/ShengUfs/NativeUfs.cpp | head -3
+
+      - name: instrument Adreno submit diagnostics
+        working-directory: device
+        run: |
+          set -e
+          python3 ci/patch_submit_fail_ci.py "$GITHUB_WORKSPACE/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp"
+          grep -n 'native_adreno_submit_fail' "$GITHUB_WORKSPACE/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp" | head -3
+
+      - name: package
+        working-directory: device
+        env:
+          UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+          INIT_DATA: ${{ inputs.init_data }}
+          OS_PROFILE: ${{ inputs.os }}
+        run: |
+          set -o pipefail
+          args=(--os "$OS_PROFILE" --uefi ../uefi-sheng)
+          if [ "$OS_PROFILE" = 27 ] && [ "$INIT_DATA" = true ]; then
+            args+=(--init-data)
+          fi
+          mkdir -p ../diag
+          scripts/package.sh "${args[@]}" 2>&1 | tee ../diag/package.log
+          rc=$?
+          echo "package rc=$rc"
+          exit $rc
+
+      - name: upload package log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-log
+          path: diag/package.log
+          retention-days: 1
+      - uses: actions/cache/save@v4
+        if: always() && inputs.os == '27' && steps.data-cache.outputs.cache-hit != 'true' && hashFiles('UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr') != ''
+        with:
+          path: |
+            UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
+            UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/inputs.json
+          key: ${{ steps.seed-key.outputs.key }}-${{ inputs.os }}
+      - name: installation seed backup
+        if: always() && inputs.os == '27' && hashFiles('UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: installation-seed-${{ inputs.os }}
+          retention-days: 1
+          path: |
+            UniXNU/out/sheng/*/*/runtime/data.dbr
+            UniXNU/out/sheng/*/*/runtime/inputs.json
+      - name: images
+        uses: actions/upload-artifact@v4
+        with:
+          name: images-${{ inputs.os }}
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            UniXNU/out/sheng/*/*/boot/boot.img
+            UniXNU/out/sheng/*/*/payload/payload.img
+            UniXNU/out/sheng/*/*/kernel/kernel.macho
+            UniXNU/out/sheng/*/*/package.manifest.json
