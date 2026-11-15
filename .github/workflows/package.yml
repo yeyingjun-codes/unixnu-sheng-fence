@@ -330,6 +330,27 @@ jobs:
           [ "$head" = "$ADRENOMETAL_REV" ] || { echo "AdrenoMetal pin did not take: $head" >&2; exit 1; }
           git -C drivers/AdrenoMetal log -1 --format="%H %s"
 
+      - name: align the Metal translator with the c333f patch series
+        working-directory: UniXNU
+        run: |
+          set -e
+          python3 - <<'PY'
+          import json, pathlib
+          p = pathlib.Path('scripts/data/gpu-metal-vulkan-inputs.json')
+          d = json.loads(p.read_text())
+          d['translator']['commit'] = '963f0e64f103d2e682cd0cc454a8fe50f52c8cbb'
+          p.write_text(json.dumps(d, indent=2) + chr(10))
+          script = pathlib.Path('scripts/build-adreno-metal-bridge.py')
+          s = script.read_text()
+          start = s.index('PATCHES = [')
+          end = s.index(']]', start) + 2
+          s = s[:start] + "PATCHES = sorted((ROOT / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))" + s[end:]
+          script.write_text(s)
+          compile(s, str(script), 'exec')
+          print('translator=963f0e64f103d2e682cd0cc454a8fe50f52c8cbb')
+          print('patches are enumerated from the pinned AdrenoMetal tree')
+          PY
+
       - name: install the process and UI report probe
         working-directory: device
         run: |
@@ -381,6 +402,14 @@ jobs:
             UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
             UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/inputs.json
           key: ${{ steps.seed-key.outputs.key }}-${{ inputs.os }}
+      - name: upload runtime logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-logs
+          path: UniXNU/out/**/logs/*.log
+          retention-days: 1
+
       - name: installation seed backup
         if: always() && inputs.os == '27' && hashFiles('UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr') != ''
         uses: actions/upload-artifact@v4
