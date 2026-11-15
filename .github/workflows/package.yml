@@ -355,11 +355,12 @@ jobs:
         working-directory: device
         run: |
           set -e
-          test -f ci/NativeUfs.probe15-fence.cpp
+          test -f ci/NativeUfs.probe17-gpuopens.cpp
           test -f drivers/ShengUfs/NativeUfs.cpp
-          cp drivers/ShengUfs/NativeUfs.cpp /tmp/NativeUfs.before-probe15.cpp
-          cp ci/NativeUfs.probe15-fence.cpp drivers/ShengUfs/NativeUfs.cpp
+          cp drivers/ShengUfs/NativeUfs.cpp /tmp/NativeUfs.before-probe17.cpp
+          cp ci/NativeUfs.probe17-gpuopens.cpp drivers/ShengUfs/NativeUfs.cpp
           grep -n 'processReportThread' drivers/ShengUfs/NativeUfs.cpp | head -3
+          grep -n 'GPU client-open report' drivers/ShengUfs/NativeUfs.cpp | head -3
           grep -n 'native_adreno_fence_wake' drivers/ShengUfs/NativeUfs.cpp | head -3
 
       - name: instrument Adreno submit diagnostics
