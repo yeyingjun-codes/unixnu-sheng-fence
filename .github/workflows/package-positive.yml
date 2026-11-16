@@ -1,4 +1,4 @@
-name: package-positive
+name: package-positive-metal-open
 
 # scripts/package.sh of this repository on a macOS runner, with the UniXNU and uefi-sheng
 # checkouts beside it, the layout board.toml names. The platform seed comes from the
@@ -49,7 +49,7 @@ jobs:
         run: |
           set -e
           mkdir -p ci seed
-          for f in apply_ramdisk.py apply_probe.py NativeUfs.probe15-fence.cpp patch_submit_fail_ci.py; do
+          for f in apply_ramdisk.py apply_probe.py NativeUfs.probe17-gpuopens.cpp patch_submit_fail_ci.py; do
             curl -fsSL "https://raw.githubusercontent.com/yeyingjun-codes/unixnu-sheng-fence/main/ci/$f" -o "ci/$f"
           done
           curl -fsSL "https://raw.githubusercontent.com/yeyingjun-codes/unixnu-sheng-fence/main/seed/data.dbr.enc" -o seed/data.dbr.enc
@@ -325,15 +325,69 @@ jobs:
           echo "drivers/Adreno740 HEAD = $head"
           [ "$head" = "$ADRENO740_REV" ] || { echo "Adreno740 pin did not take: $head" >&2; exit 1; }
           git -C drivers/Adreno740 log -1 --format="%H %s"
+      - name: Pin AdrenoMetal to the render-runtime revision
+        working-directory: UniXNU
+        env:
+          ADRENOMETAL_REPO: https://github.com/UniXNU/AdrenoMetal.git
+          ADRENOMETAL_REV: c333f988df1196a19abbe756f6e199984300a487
+        run: |
+          set -e
+          python3 - <<'PY'
+          import os, pathlib, re
+          p = pathlib.Path('components.toml')
+          blocks = p.read_text().split('[[component]]')
+          out, pinned = [], False
+          for block in blocks:
+              if re.search(r'^id = "AdrenoMetal"', block, re.M):
+                  block = re.sub(r'^repository = .*$', 'repository = "%s"' % os.environ['ADRENOMETAL_REPO'], block, count=1, flags=re.M)
+                  block = re.sub(r'^revision = .*$', 'revision = "%s"' % os.environ['ADRENOMETAL_REV'], block, count=1, flags=re.M)
+                  pinned = True
+              out.append(block)
+          if not pinned:
+              raise SystemExit('AdrenoMetal component not found')
+          p.write_text('[[component]]'.join(out))
+          PY
+          git config -f .gitmodules submodule.drivers/AdrenoMetal.url "$ADRENOMETAL_REPO"
+          git add .gitmodules
+          git update-index --cacheinfo "160000,$ADRENOMETAL_REV,drivers/AdrenoMetal"
+          git submodule sync --recursive
+          git submodule update --init --depth 1 drivers/AdrenoMetal
+          head=$(git -C drivers/AdrenoMetal rev-parse HEAD)
+          echo "drivers/AdrenoMetal HEAD = $head"
+          [ "$head" = "$ADRENOMETAL_REV" ] || { echo "AdrenoMetal pin did not take: $head" >&2; exit 1; }
+          git -C drivers/AdrenoMetal log -1 --format="%H %s"
+
+      - name: align the Metal translator with the c333f patch series
+        working-directory: UniXNU
+        run: |
+          set -e
+          python3 - <<'PY'
+          import json, pathlib
+          p = pathlib.Path('scripts/data/gpu-metal-vulkan-inputs.json')
+          d = json.loads(p.read_text())
+          d['translator']['commit'] = '963f0e64f103d2e682cd0cc454a8fe50f52c8cbb'
+          p.write_text(json.dumps(d, indent=2) + chr(10))
+          script = pathlib.Path('scripts/build-adreno-metal-bridge.py')
+          s = script.read_text()
+          start = s.index('PATCHES = [')
+          end = s.index(']]', start) + 2
+          s = s[:start] + "PATCHES = sorted((ROOT / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))" + s[end:]
+          script.write_text(s)
+          compile(s, str(script), 'exec')
+          print('translator=963f0e64f103d2e682cd0cc454a8fe50f52c8cbb')
+          print('patches are enumerated from the pinned AdrenoMetal tree')
+          PY
+
       - name: install the process and UI report probe
         working-directory: device
         run: |
           set -e
-          test -f ci/NativeUfs.probe15-fence.cpp
+          test -f ci/NativeUfs.probe17-gpuopens.cpp
           test -f drivers/ShengUfs/NativeUfs.cpp
-          cp drivers/ShengUfs/NativeUfs.cpp /tmp/NativeUfs.before-probe15.cpp
-          cp ci/NativeUfs.probe15-fence.cpp drivers/ShengUfs/NativeUfs.cpp
+          cp drivers/ShengUfs/NativeUfs.cpp /tmp/NativeUfs.before-probe17.cpp
+          cp ci/NativeUfs.probe17-gpuopens.cpp drivers/ShengUfs/NativeUfs.cpp
           grep -n 'processReportThread' drivers/ShengUfs/NativeUfs.cpp | head -3
+          grep -n 'GPU client-open report' drivers/ShengUfs/NativeUfs.cpp | head -3
           grep -n 'native_adreno_fence_wake' drivers/ShengUfs/NativeUfs.cpp | head -3
 
       - name: instrument Adreno submit diagnostics
@@ -376,6 +430,14 @@ jobs:
             UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
             UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/inputs.json
           key: ${{ steps.seed-key.outputs.key }}-${{ inputs.os }}
+      - name: upload runtime logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-logs
+          path: UniXNU/out/**/logs/*.log
+          retention-days: 1
+
       - name: installation seed backup
         if: always() && inputs.os == '27' && hashFiles('UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr') != ''
         uses: actions/upload-artifact@v4
