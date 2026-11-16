@@ -2131,6 +2131,11 @@ extern uint64_t native_adreno_now_us (void) __attribute__((weak_import));
 extern void native_metal_publication_snapshot (uint32_t *, uint32_t *, int *, int *) __attribute__((weak_import));
 extern volatile int native_gpu_addon_stage, native_gpu_addon_status __attribute__((weak_import));
 extern volatile int native_gpu_addon2_stage, native_gpu_addon2_status __attribute__((weak_import));
+extern volatile uint32_t native_mobile_client_call_count;
+extern volatile uint32_t native_mobile_client_selector_calls[96];
+extern volatile uint32_t native_mobile_client_last_pid;
+extern volatile uint32_t native_mobile_client_last_selector;
+extern volatile uint32_t native_mobile_client_last_status;
 extern void boot_process_capture (void) __attribute__((weak_import));
 extern void boot_process_snapshot (void) __attribute__((weak_import));
 extern size_t boot_progress_spawn_rows (char *, size_t) __attribute__((weak_import));
@@ -2494,7 +2499,7 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
     reinterpret_cast<uintptr_t> (native_adreno_published_service ()) : 0;
   const uint64_t clockUs = native_adreno_now_us ? native_adreno_now_us () : 0;
   size_t used = static_cast<size_t> (snprintf (report, 8192,
-                    "NATIVE_UFS GPU client-open report v4 after %u s\n", delay));
+                    "NATIVE_UFS GPU client-open report v5 after %u s\n", delay));
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "published service=%llx clock_us=%llu\n",
                     (unsigned long long)published, (unsigned long long)clockUs));
@@ -2511,6 +2516,16 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
                     native_gpu_addon_stage, static_cast<unsigned>(native_gpu_addon_status),
                     native_gpu_addon2_stage, static_cast<unsigned>(native_gpu_addon2_status)));
   appendAcceleratorRegistry (report, used);
+  used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                    "mobile client calls=%u lastpid=%u selector=%u status=%08x\n",
+                    native_mobile_client_call_count, native_mobile_client_last_pid,
+                    native_mobile_client_last_selector, native_mobile_client_last_status));
+  for (unsigned selector = 0; selector < 96 && used < 7000; ++selector) {
+    if (!native_mobile_client_selector_calls[selector]) continue;
+    used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                      "mobile selector %u calls=%u\n", selector,
+                      native_mobile_client_selector_calls[selector]));
+  }
   if (!&native_adreno_open_log_count || !&native_adreno_open_log || !&native_adreno_client_log) {
     snprintf (report + used, 8192 - used, "Adreno open/client records unavailable\n");
     panic ("%s", report);
