@@ -85,6 +85,18 @@ jobs:
             [ -f "/opt/homebrew/opt/llvm/bin/$t" ] || [ -f "/opt/homebrew/opt/lld/bin/$t" ] || { echo "missing tool: $t"; ok=0; }
           done
           [ "$ok" = 1 ]
+      - name: provide the read-only Metal publication snapshot on the old device tree
+        working-directory: device
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          p = pathlib.Path('package/GpuPowerProbe.cpp')
+          s = p.read_text()
+          if 'native_metal_publication_snapshot' not in s:
+              s = s.rstrip() + chr(10)*2 + '// Read-only CI diagnostics; no policy change.' + chr(10) + 'extern "C" void native_metal_publication_snapshot(uint32_t *stage, uint32_t *registered, int *kext, int *status) {' + chr(10) + '    if (stage) *stage = gMetalStage;' + chr(10) + '    if (registered) *registered = gMetalRegistered;' + chr(10) + '    if (kext) *kext = gMetalKext;' + chr(10) + '    if (status) *status = gMetalStatus;' + chr(10) + '}' + chr(10)
+              p.write_text(s)
+          PY
+
       - name: enforce Android boot image header v3
         working-directory: device
         run: |
