@@ -403,6 +403,20 @@ workflows:
           python3 tools/fetch-sources.py --check
           cat out/source-identity.json
 
+      - name: install the GPU client-open report v8 probe
+        script: |
+          set -euo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07d2-gpu-client-open-v8.txt"
+          exec > >(tee -a "$L") 2>&1
+          test -f "$WORK/device/ci/NativeUfs.probe17-gpuopens.cpp"
+          test -f "$WORK/device/drivers/ShengUfs/NativeUfs.cpp"
+          cp "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" "$DIAG/NativeUfs.before-probe17-v8.cpp"
+          cp "$WORK/device/ci/NativeUfs.probe17-gpuopens.cpp" "$WORK/device/drivers/ShengUfs/NativeUfs.cpp"
+          grep -n 'GPU client-open report v8' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
+          grep -n 'metal property_readers' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
+          grep -n 'backboardd=%' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
+
       - name: package
         script: |
           set -uo pipefail
