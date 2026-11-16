@@ -2460,6 +2460,30 @@ static void displayReportThread (void *argument, wait_result_t)
 
 // GPU client-open report (native-ufs-probe=17): print only records that the
 // Adreno accelerator already maintains. No IOServiceOpen, hook, or policy change.
+static void appendAcceleratorRegistry (char *report, size_t &used)
+{
+  OSDictionary *matching = IOService::serviceMatching ("IOAcceleratorES");
+  OSIterator *iterator = matching ? IOService::getMatchingServices (matching) : nullptr;
+  unsigned count = 0;
+  OSObject *object = nullptr;
+  while (iterator && (object = iterator->getNextObject ()) && used < 7000) {
+    IOService *service = OSDynamicCast (IOService, object);
+    if (!service) continue;
+    const OSMetaClass *meta = service->getMetaClass ();
+    const char *className = meta ? meta->getClassName () : "?";
+    OSString *plugin = OSDynamicCast (OSString, service->getProperty ("MetalPluginName"));
+    used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                      "registry class=%s plugin=%s\n", className,
+                      plugin ? plugin->getCStringNoCopy () : "-"));
+    count++;
+    if (count >= 8) break;
+  }
+  if (iterator) iterator->release ();
+  if (matching) matching->release ();
+  used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                    "registry IOAcceleratorES count=%u\n", count));
+}
+
 static void gpuOpenReportThread (void *argument, wait_result_t)
 {
   const unsigned delay = static_cast<unsigned> (reinterpret_cast<uintptr_t> (argument));
@@ -2470,7 +2494,7 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
     reinterpret_cast<uintptr_t> (native_adreno_published_service ()) : 0;
   const uint64_t clockUs = native_adreno_now_us ? native_adreno_now_us () : 0;
   size_t used = static_cast<size_t> (snprintf (report, 8192,
-                    "NATIVE_UFS GPU client-open report v3 after %u s\n", delay));
+                    "NATIVE_UFS GPU client-open report v4 after %u s\n", delay));
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "published service=%llx clock_us=%llu\n",
                     (unsigned long long)published, (unsigned long long)clockUs));
@@ -2486,6 +2510,7 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
                     "addon stage=%d/%08x second=%d/%08x\n",
                     native_gpu_addon_stage, static_cast<unsigned>(native_gpu_addon_status),
                     native_gpu_addon2_stage, static_cast<unsigned>(native_gpu_addon2_status)));
+  appendAcceleratorRegistry (report, used);
   if (!&native_adreno_open_log_count || !&native_adreno_open_log || !&native_adreno_client_log) {
     snprintf (report + used, 8192 - used, "Adreno open/client records unavailable\n");
     panic ("%s", report);
