@@ -21,13 +21,24 @@ jobs:
             exit 1
           fi
           echo "::add-mask::${CODEMAGIC_TOKEN}"
-          curl -fsS --connect-timeout 20 --max-time 60 \
+          curl -sS --connect-timeout 20 --max-time 60 \
             -H "x-auth-token: ${CODEMAGIC_TOKEN}" \
             -H 'Accept: application/json' \
-            https://codemagic.io/api/v3/apps -o apps.json
+            https://codemagic.io/api/v3/apps -o apps.bin \
+            -w 'http_code=%{http_code}\ncontent_type=%{content_type}\nsize_download=%{size_download}\n'
           python3 - <<'PY'
-          import json
-          data = json.load(open('apps.json'))
+          import json, os
+          body = open('apps.bin', 'rb').read()
+          print('body_bytes=', len(body))
+          text = body.decode('utf-8', 'replace')
+          token = os.environ.get('CODEMAGIC_TOKEN', '')
+          if token:
+              text = text.replace(token, '***')
+          try:
+              data = json.loads(text)
+          except Exception:
+              print('non_json_body_prefix=', text[:500])
+              raise SystemExit(1)
           apps = data.get('applications', data if isinstance(data, list) else [])
           print('app_count=', len(apps))
           for app in apps[:20]:
