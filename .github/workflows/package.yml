@@ -370,6 +370,18 @@ jobs:
           python3 ci/patch_submit_fail_ci.py "$GITHUB_WORKSPACE/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp"
           grep -n 'native_adreno_submit_fail' "$GITHUB_WORKSPACE/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp" | head -3
 
+      - name: verify diagnostic patch line endings
+        working-directory: device
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('patches/xnu-12377/sheng-mobile-client-trace.patch')
+          data = p.read_bytes().replace(b'\r\n', b'\n')
+          p.write_bytes(data)
+          assert b'\r' not in data
+          print('mobile-client trace: LF only,', len(data), 'bytes')
+          PY
+
       - name: package
         working-directory: device
         env:
