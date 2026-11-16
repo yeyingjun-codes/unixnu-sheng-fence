@@ -2144,6 +2144,13 @@ extern volatile uint32_t native_mobile_client_selector_struct1[96];
 extern volatile uint64_t native_mobile_client_selector_scalar0[96];
 extern char native_mobile_client_selector_comm[96][17];
 extern char native_mobile_client_last_comm[17];
+extern volatile uint32_t native_mobile_open_count;
+extern volatile uint32_t native_mobile_open_pid[16];
+extern volatile uint32_t native_mobile_open_type[16];
+extern volatile uint32_t native_mobile_open_status[16];
+extern char native_mobile_open_provider[16][32];
+extern char native_mobile_open_client[16][32];
+extern char native_mobile_open_comm[16][17];
 extern void boot_process_capture (void) __attribute__((weak_import));
 extern void boot_process_snapshot (void) __attribute__((weak_import));
 extern size_t boot_progress_spawn_rows (char *, size_t) __attribute__((weak_import));
@@ -2507,7 +2514,7 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
     reinterpret_cast<uintptr_t> (native_adreno_published_service ()) : 0;
   const uint64_t clockUs = native_adreno_now_us ? native_adreno_now_us () : 0;
   size_t used = static_cast<size_t> (snprintf (report, 8192,
-                    "NATIVE_UFS GPU client-open report v6 after %u s\n", delay));
+                    "NATIVE_UFS GPU client-open report v7 after %u s\n", delay));
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "published service=%llx clock_us=%llu\n",
                     (unsigned long long)published, (unsigned long long)clockUs));
@@ -2524,6 +2531,20 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
                     native_gpu_addon_stage, static_cast<unsigned>(native_gpu_addon_status),
                     native_gpu_addon2_stage, static_cast<unsigned>(native_gpu_addon2_status)));
   appendAcceleratorRegistry (report, used);
+  const uint32_t openCount = native_mobile_open_count;
+  used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                    "mobile open events=%u\n", openCount));
+  const uint32_t openFirst = openCount > 4 ? openCount - 4 : 0;
+  for (uint32_t sequence = openFirst; sequence < openCount && used < 7000; ++sequence) {
+    const uint32_t slot = sequence & 15;
+    used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                      "mobile open #%u pid=%u comm=%.17s type=%08x status=%08x\n",
+                      sequence, native_mobile_open_pid[slot], native_mobile_open_comm[slot],
+                      native_mobile_open_type[slot], native_mobile_open_status[slot]));
+    used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                      "mobile open provider=%.32s client=%.32s\n",
+                      native_mobile_open_provider[slot], native_mobile_open_client[slot]));
+  }
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "mobile client calls=%u lastpid=%u comm=%.17s selector=%u status=%08x\n",
                     native_mobile_client_call_count, native_mobile_client_last_pid,
