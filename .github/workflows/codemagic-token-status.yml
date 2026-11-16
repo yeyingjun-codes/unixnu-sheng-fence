@@ -72,7 +72,12 @@ jobs:
                   print(scrub(body))
                   continue
               data = json.loads(body)
-              builds = data.get('data') or data.get('builds') or []
+              builds = data.get('data') or data.get('builds') or data.get('items') or data.get('results')
+              if isinstance(builds, dict):
+                  builds = builds.get('items') or builds.get('builds') or builds.get('data') or [builds]
+              if builds is None:
+                  print('json_body_prefix=', scrub(body))
+                  continue
               print('build_count=', len(builds))
               for build in builds[:10]:
                   print_build(build)
