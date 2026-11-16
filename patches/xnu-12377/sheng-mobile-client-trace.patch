@@ -1,10 +1,9 @@
 --- a/iokit/Kernel/IOUserClient.cpp
 +++ b/iokit/Kernel/IOUserClient.cpp
-@@ -83,6 +83,70 @@
- 	kIOUCAsync64Flag          = 1ULL,
+@@ -84,6 +84,100 @@
  	kIOUCAsyncErrorLoggedFlag = 2ULL
  };
-+
+ 
 +extern "C" {
 +volatile uint32_t native_mobile_client_call_count;
 +volatile uint32_t native_mobile_client_selector_calls[96];
@@ -19,6 +18,13 @@
 +volatile uint64_t native_mobile_client_selector_scalar0[96];
 +char native_mobile_client_selector_comm[96][17];
 +char native_mobile_client_last_comm[17];
++volatile uint32_t native_mobile_open_count;
++volatile uint32_t native_mobile_open_pid[16];
++volatile uint32_t native_mobile_open_type[16];
++volatile uint32_t native_mobile_open_status[16];
++char native_mobile_open_provider[16][32];
++char native_mobile_open_client[16][32];
++char native_mobile_open_comm[16][17];
 +}
 +extern "C" int proc_selfpid(void);
 +extern "C" void proc_selfname(char *buf, int size);
@@ -68,10 +74,50 @@
 +	__atomic_store_n(&native_mobile_client_last_selector, selector, __ATOMIC_RELAXED);
 +	__atomic_store_n(&native_mobile_client_last_status, status, __ATOMIC_RELAXED);
 +}
- 
++
++static void
++native_mobile_open_note(IOService *service, IOUserClient *client, uint32_t type, uint32_t status)
++{
++	const OSMetaClass *providerMeta = service ? service->getMetaClass() : NULL;
++	const OSMetaClass *clientMeta = client ? client->getMetaClass() : NULL;
++	const char *provider = providerMeta ? providerMeta->getClassName() : "";
++	const char *clientName = clientMeta ? clientMeta->getClassName() : "";
++	const bool relevant = (provider && (strstr(provider, "MobileFramebuffer") || strstr(provider, "NativeLegacy")))
++	    || (clientName && !strcmp(clientName, "IOMobileFramebufferUserClient"));
++	if (!relevant) {
++		return;
++	}
++	const uint32_t sequence = __atomic_fetch_add(&native_mobile_open_count, 1, __ATOMIC_RELAXED);
++	const uint32_t slot = sequence & 15;
++	proc_selfname(native_mobile_open_comm[slot], 17);
++	native_mobile_open_comm[slot][16] = 0;
++	strlcpy(native_mobile_open_provider[slot], provider ? provider : "", 32);
++	strlcpy(native_mobile_open_client[slot], clientName ? clientName : "", 32);
++	__atomic_store_n(&native_mobile_open_pid[slot], (uint32_t)proc_selfpid(), __ATOMIC_RELAXED);
++	__atomic_store_n(&native_mobile_open_type[slot], type, __ATOMIC_RELAXED);
++	__atomic_store_n(&native_mobile_open_status[slot], status, __ATOMIC_RELAXED);
++}
++
  #if IOKITSTATS
  
-@@ -5266,6 +5330,7 @@
+ #define IOStatisticsRegisterCounter() \
+@@ -4449,6 +4543,7 @@
+ 
+ #if CONFIG_MACF
+ 	if (!native_sandbox_grant(service) && mac_iokit_check_open_service(kauth_cred_get(), service, connect_type) != 0) {
++		native_mobile_open_note(service, NULL, connect_type, kIOReturnNotPermitted);
+ 		return kIOReturnNotPermitted;
+ 	}
+ #endif
+@@ -4652,6 +4747,7 @@
+ 		}
+ 	}while (false);
+ 
++	native_mobile_open_note(service, client, connect_type, (uint32_t)res);
+ 	*connection = client;
+ 	*result = res;
+ 
+@@ -5266,6 +5362,7 @@
  	if (kIOReturnSuccess == ret) {
  		ret = client->callExternalMethod( selector, &args );
  	}
