@@ -2508,13 +2508,16 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
 {
   const unsigned delay = static_cast<unsigned> (reinterpret_cast<uintptr_t> (argument));
   IOSleep (delay * 1000);
+  /* Existing bounded process capture: one read-only pass at report time, no launchd or policy change. */
+  if (boot_process_capture) boot_process_capture ();
+  if (boot_process_snapshot) boot_process_snapshot ();
   char *report = static_cast<char *> (IOMalloc (8192));
   if (!report) panic ("NATIVE_UFS GPU open report: allocation failed");
   const uintptr_t published = native_adreno_published_service ?
     reinterpret_cast<uintptr_t> (native_adreno_published_service ()) : 0;
   const uint64_t clockUs = native_adreno_now_us ? native_adreno_now_us () : 0;
   size_t used = static_cast<size_t> (snprintf (report, 8192,
-                    "NATIVE_UFS GPU client-open report v7 after %u s\n", delay));
+                    "NATIVE_UFS GPU client-open report v8 after %u s\n", delay));
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "published service=%llx clock_us=%llu\n",
                     (unsigned long long)published, (unsigned long long)clockUs));
@@ -2530,6 +2533,12 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
                     "addon stage=%d/%08x second=%d/%08x\n",
                     native_gpu_addon_stage, static_cast<unsigned>(native_gpu_addon_status),
                     native_gpu_addon2_stage, static_cast<unsigned>(native_gpu_addon2_status)));
+  if (&boot_process_rows) {
+    used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                      "process passes=%u seen=%u busy=%u backboardd=%.96s\n",
+                      boot_process_passes, boot_process_seen, boot_process_busy,
+                      boot_process_rows[1]));
+  }
   appendAcceleratorRegistry (report, used);
   const uint32_t openCount = native_mobile_open_count;
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
@@ -2579,6 +2588,10 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
                       "metal name_reader=%.17s starter=%.17s,%.17s,%.17s\n",
                       native_adreno_metal_diag.name_reader, native_adreno_metal_diag.starter[0],
                       native_adreno_metal_diag.starter[1], native_adreno_metal_diag.starter[2]));
+    used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                      "metal property_readers=%.17s,%.17s,%.17s\n",
+                      native_adreno_metal_diag.reader[0], native_adreno_metal_diag.reader[1],
+                      native_adreno_metal_diag.reader[2]));
     used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                       "plugin report=%.64s\nplugin report2=%.64s\n",
                       native_adreno_metal_diag.report, native_adreno_metal_diag.report2));
