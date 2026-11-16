@@ -1,9 +1,10 @@
 --- a/iokit/Kernel/IOUserClient.cpp
 +++ b/iokit/Kernel/IOUserClient.cpp
-@@ -5128,6 +5128,34 @@
- 	return ret;
- }
- 
+@@ -83,6 +83,34 @@
+ 	kIOUCAsync64Flag          = 1ULL,
+ 	kIOUCAsyncErrorLoggedFlag = 2ULL
+ };
++
 +extern "C" {
 +volatile uint32_t native_mobile_client_call_count;
 +volatile uint32_t native_mobile_client_selector_calls[96];
@@ -31,10 +32,9 @@
 +	__atomic_store_n(&native_mobile_client_last_selector, selector, __ATOMIC_RELAXED);
 +	__atomic_store_n(&native_mobile_client_last_status, status, __ATOMIC_RELAXED);
 +}
-+
- /* Routine io_user_client_method */
- kern_return_t
- is_io_connect_method
+ 
+ #if IOKITSTATS
+ 
 @@ -5216,6 +5244,7 @@
  	if (kIOReturnSuccess == ret) {
  		ret = client->callExternalMethod( selector, &args );
