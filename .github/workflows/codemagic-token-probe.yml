@@ -1,0 +1,39 @@
+name: codemagic-token-probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read apps with Codemagic token 1
+        env:
+          CODEMAGIC_TOKEN: ${{ secrets.CODEMAGIC_TOKEN_1 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CODEMAGIC_TOKEN:-}" ]; then
+            echo 'CODEMAGIC_TOKEN_1 secret is missing' >&2
+            exit 1
+          fi
+          echo "::add-mask::${CODEMAGIC_TOKEN}"
+          curl -fsS --connect-timeout 20 --max-time 60 \
+            -H "x-auth-token: ${CODEMAGIC_TOKEN}" \
+            -H 'Accept: application/json' \
+            https://codemagic.io/api/v3/apps -o apps.json
+          python3 - <<'PY'
+          import json
+          data = json.load(open('apps.json'))
+          apps = data.get('applications', data if isinstance(data, list) else [])
+          print('app_count=', len(apps))
+          for app in apps[:20]:
+              app_id = app.get('_id') or app.get('id')
+              name = app.get('appName') or app.get('name')
+              repo = app.get('repository', {}) if isinstance(app.get('repository'), dict) else {}
+              repo_url = repo.get('url') or app.get('repositoryUrl') or app.get('repository_url')
+              print('app', app_id, name, repo_url)
+          PY
