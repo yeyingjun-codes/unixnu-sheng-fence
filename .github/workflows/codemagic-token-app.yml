@@ -1,0 +1,65 @@
+name: codemagic-token-app
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  create-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Create app with Codemagic token 1
+        env:
+          CODEMAGIC_TOKEN: ${{ secrets.CODEMAGIC_TOKEN_1 }}
+          REPOSITORY_URL: https://github.com/yeyingjun-codes/unixnu-sheng-fence.git
+        run: |
+          set -euo pipefail
+          if [ -z "${CODEMAGIC_TOKEN:-}" ]; then
+            echo 'CODEMAGIC_TOKEN_1 secret is missing' >&2
+            exit 1
+          fi
+          echo "::add-mask::${CODEMAGIC_TOKEN}"
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          token = os.environ['CODEMAGIC_TOKEN']
+          repo_url = os.environ['REPOSITORY_URL']
+          headers = {
+              'x-auth-token': token,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'User-Agent': 'sheng-codemagic-app',
+          }
+          def request(method, url, payload=None):
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=90) as resp:
+                      body = resp.read().decode('utf-8', 'replace')
+                      return resp.status, body
+              except urllib.error.HTTPError as e:
+                  return e.code, e.read().decode('utf-8', 'replace')
+          def show(text):
+              return text.replace(token, '***')[:2000]
+          status, body = request('GET', 'https://codemagic.io/api/v3/user/apps')
+          print('list_status=', status)
+          apps = []
+          if status == 200:
+              data = json.loads(body)
+              apps = data.get('data') or data.get('applications') or data.get('items') or []
+              print('existing_app_count=', len(apps))
+              for app in apps:
+                  text = json.dumps(app)
+                  if 'unixnu-sheng-fence' in text:
+                      print('existing_matching_app=', app.get('_id') or app.get('id'), app.get('appName') or app.get('name'))
+          else:
+              print('list_body=', show(body))
+          if not apps:
+              status, body = request('POST', 'https://api.codemagic.io/apps', {'repositoryUrl': repo_url})
+              print('create_status=', status)
+              print('create_body=', show(body))
+              if status not in (200, 201, 202):
+                  raise SystemExit(1)
+          PY
