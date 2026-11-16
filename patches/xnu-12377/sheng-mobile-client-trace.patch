@@ -1,6 +1,6 @@
 --- a/iokit/Kernel/IOUserClient.cpp
 +++ b/iokit/Kernel/IOUserClient.cpp
-@@ -84,6 +84,100 @@
+@@ -84,6 +84,103 @@
  	kIOUCAsyncErrorLoggedFlag = 2ULL
  };
  
@@ -82,8 +82,11 @@
 +	const OSMetaClass *clientMeta = client ? client->getMetaClass() : NULL;
 +	const char *provider = providerMeta ? providerMeta->getClassName() : "";
 +	const char *clientName = clientMeta ? clientMeta->getClassName() : "";
-+	const bool relevant = (provider && (strstr(provider, "MobileFramebuffer") || strstr(provider, "NativeLegacy")))
-+	    || (clientName && !strcmp(clientName, "IOMobileFramebufferUserClient"));
++	const bool providerMatch = !strcmp(provider, "IOMobileFramebuffer")
++	    || !strcmp(provider, "IOMobileFramebufferService")
++	    || !strcmp(provider, "IOMobileFramebufferLegacy")
++	    || !strcmp(provider, "NativeLegacyDisplay");
++	const bool relevant = providerMatch || !strcmp(clientName, "IOMobileFramebufferUserClient");
 +	if (!relevant) {
 +		return;
 +	}
@@ -101,7 +104,7 @@
  #if IOKITSTATS
  
  #define IOStatisticsRegisterCounter() \
-@@ -4449,6 +4543,7 @@
+@@ -4449,6 +4546,7 @@
  
  #if CONFIG_MACF
  	if (!native_sandbox_grant(service) && mac_iokit_check_open_service(kauth_cred_get(), service, connect_type) != 0) {
@@ -109,7 +112,7 @@
  		return kIOReturnNotPermitted;
  	}
  #endif
-@@ -4652,6 +4747,7 @@
+@@ -4652,6 +4750,7 @@
  		}
  	}while (false);
  
@@ -117,7 +120,7 @@
  	*connection = client;
  	*result = res;
  
-@@ -5266,6 +5362,7 @@
+@@ -5266,6 +5365,7 @@
  	if (kIOReturnSuccess == ret) {
  		ret = client->callExternalMethod( selector, &args );
  	}
