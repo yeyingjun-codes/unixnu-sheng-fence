@@ -1,0 +1,45 @@
+--- a/iokit/Kernel/IOUserClient.cpp
++++ b/iokit/Kernel/IOUserClient.cpp
+@@ -5128,6 +5128,34 @@
+ 	return ret;
+ }
+ 
++extern "C" {
++volatile uint32_t native_mobile_client_call_count;
++volatile uint32_t native_mobile_client_selector_calls[96];
++volatile uint32_t native_mobile_client_last_pid;
++volatile uint32_t native_mobile_client_last_selector;
++volatile uint32_t native_mobile_client_last_status;
++}
++extern "C" int proc_selfpid(void);
++
++/* PAC-safe source-level observation of the original mobile-display client.
++ * No vtable copy, interposition, dispatch or policy change. */
++static void
++native_mobile_client_note(IOUserClient *client, uint32_t selector, uint32_t status)
++{
++	const OSMetaClass *meta = client ? client->getMetaClass() : NULL;
++	const char *name = meta ? meta->getClassName() : NULL;
++	if (!name || strcmp(name, "IOMobileFramebufferUserClient")) {
++		return;
++	}
++	__atomic_add_fetch(&native_mobile_client_call_count, 1, __ATOMIC_RELAXED);
++	if (selector < 96) {
++		__atomic_add_fetch(&native_mobile_client_selector_calls[selector], 1, __ATOMIC_RELAXED);
++	}
++	__atomic_store_n(&native_mobile_client_last_pid, (uint32_t)proc_selfpid(), __ATOMIC_RELAXED);
++	__atomic_store_n(&native_mobile_client_last_selector, selector, __ATOMIC_RELAXED);
++	__atomic_store_n(&native_mobile_client_last_status, status, __ATOMIC_RELAXED);
++}
++
+ /* Routine io_user_client_method */
+ kern_return_t
+ is_io_connect_method
+@@ -5216,6 +5244,7 @@
+ 	if (kIOReturnSuccess == ret) {
+ 		ret = client->callExternalMethod( selector, &args );
+ 	}
++	native_mobile_client_note(client, selector, (uint32_t)ret);
+ 
+ 	*scalar_outputCnt = args.scalarOutputCount;
+ 	*inband_outputCnt = args.structureOutputSize;
