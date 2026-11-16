@@ -21,14 +21,24 @@ jobs:
             exit 1
           fi
           echo "::add-mask::${CODEMAGIC_TOKEN}"
-          curl -sS --connect-timeout 20 --max-time 60 \
-            -H "x-auth-token: ${CODEMAGIC_TOKEN}" \
-            -H 'Accept: application/json' \
-            https://codemagic.io/api/v3/apps -o apps.bin \
-            -w 'http_code=%{http_code}\ncontent_type=%{content_type}\nsize_download=%{size_download}\n'
-          python3 - <<'PY'
-          import json, os
-          body = open('apps.bin', 'rb').read()
+          ok=0
+          for endpoint in \
+            https://codemagic.io/api/v3/user/apps \
+            https://api.codemagic.io/apps
+          do
+            echo "endpoint=${endpoint}"
+            body=$(mktemp)
+            meta=$(mktemp)
+            curl -sS --connect-timeout 20 --max-time 60 \
+              -H "x-auth-token: ${CODEMAGIC_TOKEN}" \
+              -H 'Content-Type: application/json' \
+              -H 'Accept: application/json' \
+              "${endpoint}" -o "${body}" \
+              -w 'http_code=%{http_code}\ncontent_type=%{content_type}\nsize_download=%{size_download}\n' >"${meta}" || true
+            cat "${meta}"
+            if BODY="${body}" CODEMAGIC_TOKEN="${CODEMAGIC_TOKEN}" python3 - <<'PY'
+          import json, os, sys
+          body = open(os.environ['BODY'], 'rb').read()
           print('body_bytes=', len(body))
           text = body.decode('utf-8', 'replace')
           token = os.environ.get('CODEMAGIC_TOKEN', '')
@@ -38,8 +48,14 @@ jobs:
               data = json.loads(text)
           except Exception:
               print('non_json_body_prefix=', text[:500])
-              raise SystemExit(1)
-          apps = data.get('applications', data if isinstance(data, list) else [])
+              sys.exit(2)
+          apps = data.get('applications') or data.get('items') or data.get('results')
+          if apps is None and isinstance(data, list):
+              apps = data
+          if apps is None:
+              print('json_keys=', sorted(data.keys()) if isinstance(data, dict) else type(data).__name__)
+              print('json_body_prefix=', text[:500])
+              sys.exit(2)
           print('app_count=', len(apps))
           for app in apps[:20]:
               app_id = app.get('_id') or app.get('id')
@@ -48,3 +64,9 @@ jobs:
               repo_url = repo.get('url') or app.get('repositoryUrl') or app.get('repository_url')
               print('app', app_id, name, repo_url)
           PY
+            then
+              ok=1
+              break
+            fi
+          done
+          [ "$ok" = 1 ]
