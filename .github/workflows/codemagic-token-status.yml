@@ -1,0 +1,81 @@
+name: codemagic-token-status
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: Codemagic build id; empty means list latest
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read Codemagic build status
+        env:
+          CODEMAGIC_TOKEN: ${{ secrets.CODEMAGIC_TOKEN_1 }}
+          CODEMAGIC_APP_ID: 6afb4c09e215a04a9aafd0fd
+          BUILD_ID: ${{ inputs.build_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CODEMAGIC_TOKEN:-}" ]; then
+            echo 'CODEMAGIC_TOKEN_1 secret is missing' >&2
+            exit 1
+          fi
+          echo "::add-mask::${CODEMAGIC_TOKEN}"
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          token = os.environ['CODEMAGIC_TOKEN']
+          app = os.environ['CODEMAGIC_APP_ID']
+          build_id = os.environ.get('BUILD_ID', '')
+          base = 'https://codemagic.io/api/v3'
+          legacy = 'https://api.codemagic.io'
+          headers = {'x-auth-token': token, 'Accept': 'application/json', 'User-Agent': 'sheng-cm-status'}
+          def get(url):
+              req = urllib.request.Request(url, headers=headers)
+              try:
+                  with urllib.request.urlopen(req, timeout=90) as resp:
+                      return resp.status, resp.read().decode('utf-8', 'replace')
+              except urllib.error.HTTPError as e:
+                  return e.code, e.read().decode('utf-8', 'replace')
+          def scrub(text):
+              return text.replace(token, '***')[:2500]
+          def print_build(item):
+                  print('build', item.get('_id') or item.get('id'), item.get('status'), item.get('workflow_id') or item.get('workflowId'), item.get('branch'), item.get('created_at') or item.get('queued_at'))
+          if build_id:
+              status, body = get(f'{base}/builds/{build_id}')
+              print('build_status_http=', status)
+              print(scrub(body))
+              status, body = get(f'{base}/builds/{build_id}/actions')
+              print('actions_http=', status)
+              if status == 200:
+                  for action in json.loads(body).get('data', []):
+                      print('step', action.get('status'), action.get('name'))
+              else:
+                  print(scrub(body))
+              raise SystemExit(0 if status == 200 else 1)
+          candidates = [
+              f'{base}/apps/{app}/builds',
+              f'{base}/builds?appId={app}',
+              f'{legacy}/builds?appId={app}',
+          ]
+          for url in candidates:
+              status, body = get(url)
+              print('endpoint=', url)
+              print('http=', status)
+              if status != 200:
+                  print(scrub(body))
+                  continue
+              data = json.loads(body)
+              builds = data.get('data') or data.get('builds') or []
+              print('build_count=', len(builds))
+              for build in builds[:10]:
+                  print_build(build)
+              if builds:
+                  break
+          PY
