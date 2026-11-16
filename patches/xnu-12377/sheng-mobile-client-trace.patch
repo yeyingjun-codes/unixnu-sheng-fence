@@ -35,7 +35,7 @@
  
  #if IOKITSTATS
  
-@@ -5216,6 +5244,7 @@
+@@ -5266,6 +5294,7 @@
  	if (kIOReturnSuccess == ret) {
  		ret = client->callExternalMethod( selector, &args );
  	}
