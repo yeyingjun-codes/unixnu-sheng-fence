@@ -1,0 +1,120 @@
+name: codemagic-token-download
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: Existing Codemagic build id to download; does not start a build
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download existing Codemagic build artifacts
+        env:
+          CODEMAGIC_TOKEN: ${{ secrets.CODEMAGIC_TOKEN_1 }}
+          CODEMAGIC_APP_ID: 6afb4c09e215a04a9aafd0fd
+          BUILD_ID: ${{ inputs.build_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CODEMAGIC_TOKEN:-}" ]; then
+            echo 'CODEMAGIC_TOKEN_1 secret is missing' >&2
+            exit 1
+          fi
+          echo "::add-mask::${CODEMAGIC_TOKEN}"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import urllib.error
+          import urllib.request
+
+          token = os.environ['CODEMAGIC_TOKEN']
+          app_id = os.environ['CODEMAGIC_APP_ID']
+          build_id = os.environ['BUILD_ID']
+          out = Path('codemagic-output')
+          out.mkdir(exist_ok=True)
+          base = 'https://codemagic.io/api/v3'
+          legacy = 'https://api.codemagic.io'
+          headers = {
+              'x-auth-token': token,
+              'Accept': 'application/json',
+              'User-Agent': 'sheng-codemagic-download',
+          }
+
+          def scrub(text):
+              return text.replace(token, '***')[:4000]
+
+          def request(url):
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req, timeout=120) as response:
+                  return json.loads(response.read().decode('utf-8', 'replace'))
+
+          build = request(f'{base}/builds/{build_id}')['data']
+          actions = request(f'{base}/builds/{build_id}/actions')['data']
+          print('build', build_id, 'status=', build.get('status'), 'instance=', build.get('instance_type'))
+          print('commit=', (build.get('commit') or {}).get('hash'), 'branch=', build.get('branch'))
+          failed = []
+          for action in actions:
+              print('step', action.get('status'), action.get('name'))
+              if action.get('status') not in ('success', 'skipped'):
+                  failed.append(action.get('name'))
+          try:
+              legacy_build = request(f'{legacy}/builds/{build_id}').get('build', {})
+              print('legacy_status=', legacy_build.get('status'), 'message=', legacy_build.get('message'))
+          except urllib.error.HTTPError as exc:
+              print('legacy_status_http=', exc.code)
+
+          # Codemagic v3 reports a successful build as "finished"; failed builds report "failed".
+          ok = build.get('status') == 'success' or (build.get('status') == 'finished' and not failed)
+          artifacts = build.get('artifacts') or []
+          print('artifacts=', len(artifacts))
+          downloaded = []
+          for item in artifacts:
+              name = item.get('name') or 'artifact'
+              url = item.get('short_lived_download_url')
+              if not url:
+                  raise SystemExit(f'artifact has no download URL: {name}')
+              target = out / name
+              req = urllib.request.Request(url, headers={'x-auth-token': token, 'User-Agent': 'sheng-codemagic-download'})
+              try:
+                  source = urllib.request.urlopen(req, timeout=600)
+              except Exception:
+                  source = urllib.request.urlopen(url, timeout=600)
+              with source as response, target.open('wb') as handle:
+                  shutil.copyfileobj(response, handle, 1024 * 1024)
+              digest = hashlib.sha256(target.read_bytes()).hexdigest()
+              size = target.stat().st_size
+              print('downloaded', name, size, digest)
+              downloaded.append({'name': name, 'bytes': size, 'sha256': digest})
+
+          (out / 'build-id.txt').write_text(build_id + '\n')
+          (out / 'summary.json').write_text(json.dumps({
+              'build_id': build_id,
+              'app_id': app_id,
+              'status': build.get('status'),
+              'commit': (build.get('commit') or {}).get('hash'),
+              'branch': build.get('branch'),
+              'instance_type': build.get('instance_type'),
+              'started_at': build.get('started_at'),
+              'finished_at': build.get('finished_at'),
+              'actions': actions,
+              'downloaded': downloaded,
+          }, indent=2, ensure_ascii=False) + '\n')
+          if not ok:
+              raise SystemExit(f'Codemagic build is not successful: {build.get("status")}; failed={failed}')
+          PY
+      - name: Upload existing Codemagic artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: codemagic-build-${{ inputs.build_id }}
+          path: codemagic-output/**
+          retention-days: 7
+          if-no-files-found: error
