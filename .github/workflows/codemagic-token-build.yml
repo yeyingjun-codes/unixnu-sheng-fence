@@ -107,7 +107,8 @@ jobs:
               if state != last:
                   print(f"build_status={state} instance={data.get('instance_type')} queued={data.get('queued_at')} started={data.get('started_at')}", flush=True)
                   last = state
-              if state in ('success', 'failed', 'canceled', 'timeout'):
+              # Codemagic v3 reports successful completion as "finished"; failures use "failed".
+              if state in ('success', 'finished', 'failed', 'canceled', 'timeout'):
                   final = data
                   break
               time.sleep(30)
@@ -144,7 +145,9 @@ jobs:
                   with urllib.request.urlopen(url, timeout=600) as resp:
                       target.write_bytes(resp.read())
               print('downloaded', name, target.stat().st_size, flush=True)
-          if final.get('status') != 'success':
+          successful = final.get('status') in ('success', 'finished') and not any(
+              action.get('status') not in ('success', 'skipped') for action in actions)
+          if not successful:
               raise SystemExit(1)
           PY
           python3 cm_build.py
