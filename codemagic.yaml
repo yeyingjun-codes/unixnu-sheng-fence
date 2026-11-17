@@ -417,6 +417,16 @@ workflows:
           grep -n 'metal property_readers' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
           grep -n 'backboardd=%' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
 
+      - name: instrument Adreno submit diagnostics
+        script: |
+          set -euo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07f-adreno-submit-probe.txt"
+          exec > >(tee -a "$L") 2>&1
+          python3 "$WORK/device/ci/patch_submit_fail_ci.py" "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp"
+          grep -n 'native_adreno_submit_fail' "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp" | head -3
+          grep -n 'native_adreno_cp_state' "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp" | head -3
+
       - name: package
         script: |
           set -uo pipefail
