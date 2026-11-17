@@ -55,7 +55,9 @@ jobs:
               print('actions_http=', status)
               if status == 200:
                   for action in json.loads(body).get('data', []):
-                      print('step', action.get('status'), action.get('name'))
+                      print('step', action.get('status'), action.get('name'),
+                            'started=' + str(action.get('started_at')),
+                            'finished=' + str(action.get('finished_at')))
               else:
                   print(scrub(body))
               raise SystemExit(0 if status == 200 else 1)
