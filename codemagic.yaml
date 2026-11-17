@@ -403,17 +403,17 @@ workflows:
           python3 tools/fetch-sources.py --check
           cat out/source-identity.json
 
-      - name: install the GPU client-open report v8 probe
+      - name: install the GPU client-open report v9 probe
         script: |
           set -euo pipefail
           mkdir -p "$DIAG"
-          L="$DIAG/07d2-gpu-client-open-v8.txt"
+          L="$DIAG/07d2-gpu-client-open-v9.txt"
           exec > >(tee -a "$L") 2>&1
           test -f "$WORK/device/ci/NativeUfs.probe17-gpuopens.cpp"
           test -f "$WORK/device/drivers/ShengUfs/NativeUfs.cpp"
-          cp "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" "$DIAG/NativeUfs.before-probe17-v8.cpp"
+          cp "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" "$DIAG/NativeUfs.before-probe17-v9.cpp"
           cp "$WORK/device/ci/NativeUfs.probe17-gpuopens.cpp" "$WORK/device/drivers/ShengUfs/NativeUfs.cpp"
-          grep -n 'GPU client-open report v8' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
+          grep -n 'GPU client-open report v9' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
           grep -n 'metal property_readers' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
           grep -n 'backboardd=%' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
 
@@ -426,6 +426,15 @@ workflows:
           python3 "$WORK/device/ci/patch_submit_fail_ci.py" "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp"
           grep -n 'native_adreno_submit_fail' "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp" | head -3
           grep -n 'native_adreno_cp_state' "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp" | head -3
+
+      - name: instrument Adreno property-read ring
+        script: |
+          set -euo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/07g-adreno-property-read-probe.txt"
+          exec > >(tee -a "$L") 2>&1
+          python3 "$WORK/device/ci/patch_property_read_ci.py" "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoPublish.cpp"
+          grep -n 'native_adreno_property_read_log' "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoPublish.cpp" | head -5
 
       - name: package
         script: |
