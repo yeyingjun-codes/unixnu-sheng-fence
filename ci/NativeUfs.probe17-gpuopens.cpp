@@ -2520,13 +2520,17 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
   /* Existing bounded process capture: one read-only pass at report time, no launchd or policy change. */
   if (boot_process_capture) boot_process_capture ();
   if (boot_process_snapshot) boot_process_snapshot ();
+  unsigned backboarddRoleCount = 0;
+  char backboarddRole[12][120] = {};
+  if (boot_ui_trace_role_rows)
+    backboarddRoleCount = boot_ui_trace_role_rows (0, backboarddRole, 12, 2);
   char *report = static_cast<char *> (IOMalloc (8192));
   if (!report) panic ("NATIVE_UFS GPU open report: allocation failed");
   const uintptr_t published = native_adreno_published_service ?
     reinterpret_cast<uintptr_t> (native_adreno_published_service ()) : 0;
   const uint64_t clockUs = native_adreno_now_us ? native_adreno_now_us () : 0;
   size_t used = static_cast<size_t> (snprintf (report, 8192,
-                    "NATIVE_UFS GPU client-open report v9 after %u s\n", delay));
+                    "NATIVE_UFS GPU client-open report v10 after %u s\n", delay));
   used += static_cast<size_t> (snprintf (report + used, 8192 - used,
                     "published service=%llx clock_us=%llu\n",
                     (unsigned long long)published, (unsigned long long)clockUs));
@@ -2616,6 +2620,17 @@ static void gpuOpenReportThread (void *argument, wait_result_t)
                         "property read #%u pid=%d name=%.20s key=%.32s\n",
                         entry.sequence, entry.pid, entry.name, entry.key));
     }
+  }
+  if (boot_ui_trace_role_rows) {
+    used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                      "backboardd role-0 trace rows=%u\n", backboarddRoleCount));
+    for (unsigned row = 0; row < backboarddRoleCount && row < 12 && used < 7000; ++row) {
+      used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                        "bb %s\n", backboarddRole[row]));
+    }
+  } else {
+    used += static_cast<size_t> (snprintf (report + used, 8192 - used,
+                      "backboardd role-0 trace unavailable\n"));
   }
   if (&native_adreno_metal_askers) {
     for (unsigned row = 0; row < 12 && used < 7000; ++row) {
