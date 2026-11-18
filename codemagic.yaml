@@ -358,6 +358,9 @@ workflows:
                   # aborting the build (build-ath12k-wifi.py calls fetch-sources.sh again).
                   subprocess.run(['git', 'clone', '--depth', '1', '--branch', src['ref'],
                                   src['url'], str(d)], check=True)
+              # A branch head may move after the lock was written; always materialise the exact commit.
+              subprocess.run(['git', '-C', str(d), 'fetch', '--depth', '1', 'origin', src['commit']], check=True)
+              subprocess.run(['git', '-C', str(d), 'checkout', '--detach', src['commit']], check=True)
               head = subprocess.run(['git', '-C', str(d), 'rev-parse', 'HEAD'],
                                     capture_output=True, text=True, check=True).stdout.strip()
               print(f"{name}: HEAD {head}")
