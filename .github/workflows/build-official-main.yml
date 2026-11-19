@@ -108,8 +108,9 @@ jobs:
           assert old in text
           script.write_text(text.replace(old, new, 1))
           content = copied.read_text()
-          start = content.index('/// [`read_pages`] on Windows:')
-          end = content.index('\n#[cfg(test)]', start) if '\n#[cfg(test)]' in content[start:] else len(content)
+          marker = '/// [`read_pages`] on Windows:'
+          start = content.index(marker)
+          end = content.index('\n#[cfg(windows)]', start)
           fallback = '''/// [`read_pages`] where the system is not asked: nothing is copied.
           #[cfg(not(any(target_os = "linux", target_os = "macos")))]
           pub(crate) fn read_pages(_pages: NonNull<u8>, _into: &mut [u8]) -> bool {
