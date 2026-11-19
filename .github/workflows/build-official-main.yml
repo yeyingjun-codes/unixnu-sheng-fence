@@ -108,10 +108,7 @@ jobs:
           for name in ('0063-main-optimizations-on-development-46e7cc96.patch', '0064-copies-leave-unreachable-pages-alone.patch'):
               subprocess.run(['git', '-C', str(translator), 'apply', str(tree / 'drivers/AdrenoMetal/bridge/patches' / name)], check=True)
           text = script.read_text()
-          old = "'0064-copies-leave-unreachable-pages-alone.patch']]"
-          new = "'0064-copies-leave-unreachable-pages-alone.patch',\n    '0065-read-pages-other-platforms.patch']]"
-          assert old in text
-          script.write_text(text.replace(old, new, 1))
+          assert "'0064-copies-leave-unreachable-pages-alone.patch']]" in text
           content = copied.read_text()
           old_cfg = '#[cfg(windows)]\npub(crate) fn read_pages(pages: NonNull<u8>, into: &mut [u8]) -> bool {'
           new_cfg = '#[cfg(not(any(target_os = "linux", target_os = "macos")))]\npub(crate) fn read_pages(_pages: NonNull<u8>, _into: &mut [u8]) -> bool {'
@@ -119,14 +116,13 @@ jobs:
           content = content.replace(old_cfg, new_cfg, 1)
           assert 'ReadProcessMemory' in content
           copied.write_text(content)
-          patch = tree / 'drivers/AdrenoMetal/bridge/patches/0065-read-pages-other-platforms.patch'
-          patch.parent.mkdir(parents=True, exist_ok=True)
-          translator = pathlib.Path(subprocess.check_output(['git', '-C', str(copied.parent), 'rev-parse', '--show-toplevel'], text=True).strip())
-          diff = subprocess.check_output(['git', '-C', str(translator), 'diff', '--', str(copied.relative_to(translator))], text=True)
-          assert 'read_pages' in diff and 'not(any(target_os = "linux", target_os = "macos"))' in diff
-          patch.write_text(diff)
-          print('registered', patch)
-          print(diff)
+          patch = tree / 'drivers/AdrenoMetal/bridge/patches/0064-copies-leave-unreachable-pages-alone.patch'
+          old_text = patch.read_text()
+          old_lines = '#[cfg(windows)]\npub(crate) fn read_pages(pages: NonNull<u8>, into: &mut [u8]) -> bool {'
+          new_lines = '#[cfg(not(any(target_os = "linux", target_os = "macos")))]\npub(crate) fn read_pages(_pages: NonNull<u8>, _into: &mut [u8]) -> bool {'
+          assert old_lines in old_text
+          patch.write_text(old_text.replace(old_lines, new_lines, 1))
+          print('folded read_pages fallback into the existing 0064 patch', patch)
           PY
               echo "Applying the recorded patch through the official Metal bridge builder"
               python3 "$tree/scripts/build-adreno-metal-bridge.py" --target ios27 --reuse-current
@@ -143,7 +139,7 @@ jobs:
           name: official-main-read-pages-patch-${{ github.run_id }}
           retention-days: 30
           if-no-files-found: warn
-          path: UniXNU/out/sheng/*/sheng_ipados27/tree/drivers/AdrenoMetal/bridge/patches/0065-read-pages-other-platforms.patch
+          path: UniXNU/out/sheng/*/sheng_ipados27/tree/drivers/AdrenoMetal/bridge/patches/0064-copies-leave-unreachable-pages-alone.patch
 
       - name: installation seed backup
         if: always() && hashFiles('UniXNU/out/sheng/*/sheng_ipados27/runtime/data.dbr') != ''
