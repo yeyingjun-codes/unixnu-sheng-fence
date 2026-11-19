@@ -93,23 +93,36 @@ jobs:
           rc=$?
           set -e
           if [ "$rc" -ne 0 ]; then
+            tree=$(find ../UniXNU/out -type d -path '*/sheng_ipados27/tree' -print -quit)
             copied=$(find ../UniXNU/out -path '*/metal2vulkan-runtime/src/copied.rs' -print -quit)
-            if [ -n "$copied" ] && grep -q 'cannot find value `read_pages`' ../UniXNU/out/sheng/*/sheng_ipados27/logs/runtime.log; then
-              echo "Applying the upstream non-Linux/non-macOS read_pages cfg fallback"
-              python3 - "$copied" <<'PY'
-          import pathlib, sys
-          path = pathlib.Path(sys.argv[1])
-          text = path.read_text()
-          start = text.index('/// [`read_pages`] on Windows:')
-          end = text.index('\n#[cfg(test)]', start) if '\n#[cfg(test)]' in text[start:] else len(text)
+            if [ -n "$tree" ] && [ -n "$copied" ] && grep -q 'cannot find value `read_pages`' ../UniXNU/out/sheng/*/sheng_ipados27/logs/runtime.log; then
+              echo "Registering the upstream non-Linux/non-macOS read_pages cfg fallback as a recorded patch"
+              python3 - "$tree" "$copied" <<'PY'
+          import pathlib, subprocess, sys
+          tree = pathlib.Path(sys.argv[1])
+          copied = pathlib.Path(sys.argv[2])
+          script = tree / 'scripts/build-adreno-metal-bridge.py'
+          text = script.read_text()
+          old = "'0064-copies-leave-unreachable-pages-alone.patch']]"
+          new = "'0064-copies-leave-unreachable-pages-alone.patch',\n    '0065-read-pages-other-platforms.patch']]"
+          assert old in text
+          script.write_text(text.replace(old, new, 1))
+          content = copied.read_text()
+          start = content.index('/// [`read_pages`] on Windows:')
+          end = content.index('\n#[cfg(test)]', start) if '\n#[cfg(test)]' in content[start:] else len(content)
           fallback = '''/// [`read_pages`] where the system is not asked: nothing is copied.
           #[cfg(not(any(target_os = "linux", target_os = "macos")))]
           pub(crate) fn read_pages(_pages: NonNull<u8>, _into: &mut [u8]) -> bool {
               false
           }
           '''
-          path.write_text(text[:start] + fallback + text[end:])
-          print('patched', path)
+          copied.write_text(content[:start] + fallback + content[end:])
+          patch = tree / 'drivers/AdrenoMetal/bridge/patches/0065-read-pages-other-platforms.patch'
+          patch.parent.mkdir(parents=True, exist_ok=True)
+          diff = subprocess.check_output(['git', '-C', str(copied.parents[5]), 'diff', '--', str(copied.relative_to(copied.parents[5]))], text=True)
+          assert 'read_pages' in diff and 'not(any(target_os = "linux", target_os = "macos"))' in diff
+          patch.write_text(diff)
+          print('registered', patch)
           PY
               scripts/package.sh --os "$OS_PROFILE" --uefi ../uefi-sheng --init-data
             else
