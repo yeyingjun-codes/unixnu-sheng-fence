@@ -712,6 +712,24 @@ workflows:
           echo "== staged firmware =="
           find .cache/firmware -type f -exec ls -l {} \;
 
+      - name: drop the failing startup-failure-log diagnostic patch
+        script: |
+          # sheng-startup-failure-log.patch is a boot-logging diagnostic probe (weak_import
+          # boot_log_startup_result), not required for boot. Its kern_exec.c context does not
+          # apply on the current xnu pin (its anchors moved after the owner/union patches).
+          # Drop it so the rest of the kernel patch chain applies cleanly.
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/06c-drop-startup-log.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          cd "$WORK/device"
+          for d in patches/xnu-12377 patches/xnu; do
+            p="$d/sheng-startup-failure-log.patch"
+            if [ -f "$p" ]; then echo "removing $p"; rm -v "$p"; fi
+          done
+          grep -rl 'sheng-startup-failure-log' patches/ 2>/dev/null || echo "no remaining references in patches/"
+
       - name: install WCN7850 firmware (linux-firmware, pinned)
         script: |
           # device/scripts/build-wifi-userspace.py reads firmware/wcn7850/{amss,m3,board-2}.bin.
