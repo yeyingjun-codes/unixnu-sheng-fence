@@ -126,6 +126,7 @@ jobs:
           assert 'read_pages' in diff and 'not(any(target_os = "linux", target_os = "macos"))' in diff
           patch.write_text(diff)
           print('registered', patch)
+          print(diff)
           PY
               echo "Applying the recorded patch through the official Metal bridge builder"
               python3 "$tree/scripts/build-adreno-metal-bridge.py" --target ios27 --reuse-current
@@ -134,6 +135,15 @@ jobs:
               exit "$rc"
             fi
           fi
+
+      - name: generated read_pages patch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-main-read-pages-patch-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: UniXNU/out/sheng/*/sheng_ipados27/tree/drivers/AdrenoMetal/bridge/patches/0065-read-pages-other-platforms.patch
 
       - name: installation seed backup
         if: always() && hashFiles('UniXNU/out/sheng/*/sheng_ipados27/runtime/data.dbr') != ''
