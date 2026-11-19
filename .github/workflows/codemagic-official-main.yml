@@ -2,6 +2,11 @@ name: codemagic-official-main
 
 on:
   workflow_dispatch:
+    inputs:
+      resume_build_id:
+        description: 'Existing Codemagic build id to watch instead of starting a new build'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -17,6 +22,7 @@ jobs:
           CODEMAGIC_APP_ID: 6afb4c09e215a04a9aafd0fd
           CODEMAGIC_WORKFLOW_ID: sheng-official-main
           CODEMAGIC_BRANCH: main
+          RESUME_BUILD_ID: ${{ github.event.inputs.resume_build_id }}
         run: |
           set -euo pipefail
           if [ -z "${CODEMAGIC_TOKEN:-}" ]; then
@@ -38,14 +44,21 @@ jobs:
           def scrub(text): return text.replace(TOKEN, '***')[:4000]
           def request(method, url, payload=None, raw=False):
               data = json.dumps(payload).encode() if payload is not None else None
-              req = urllib.request.Request(url, data=data, headers=HEADERS, method=method)
-              try:
-                  with urllib.request.urlopen(req, timeout=120) as resp:
-                      body = resp.read()
-                      return (resp.status, body) if raw else (resp.status, body.decode('utf-8','replace'))
-              except urllib.error.HTTPError as e:
-                  body = e.read()
-                  return (e.code, body) if raw else (e.code, body.decode('utf-8','replace'))
+              last_err = None
+              for attempt in range(4):
+                  req = urllib.request.Request(url, data=data, headers=HEADERS, method=method)
+                  try:
+                      with urllib.request.urlopen(req, timeout=120) as resp:
+                          body = resp.read()
+                          return (resp.status, body) if raw else (resp.status, body.decode('utf-8','replace'))
+                  except urllib.error.HTTPError as e:
+                      body = e.read()
+                      return (e.code, body) if raw else (e.code, body.decode('utf-8','replace'))
+                  except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+                      last_err = e
+                      print('net_retry', method, url, type(e).__name__, str(e)[:120], flush=True)
+                      time.sleep(5 * (attempt + 1))
+              raise SystemExit('network failed after retries: %s' % last_err)
           def find_build_id(value):
               if isinstance(value, dict):
                   for key in ('_id','id','buildId','build_id'):
@@ -59,18 +72,24 @@ jobs:
                       found=find_build_id(item)
                       if found: return found
               return None
-          status, body = request('POST', f'{BASE}/apps/{APP}/builds', {'workflow_id': WORKFLOW, 'branch': BRANCH})
-          print('start_v3_status=', status, flush=True); print('start_v3_body=', scrub(body), flush=True)
-          build_id=None
-          if status in (200,201,202):
-              try: build_id=find_build_id(json.loads(body))
-              except Exception: pass
-          if not build_id:
-              s2,b2=request('POST', f'{LEGACY}/builds', {'appId':APP,'workflowId':WORKFLOW,'branch':BRANCH})
-              print('start_legacy_status=',s2,flush=True); print('start_legacy_body=',scrub(b2),flush=True)
-              if s2 in (200,201,202): build_id=find_build_id(json.loads(b2))
-          if not build_id: raise SystemExit('Codemagic did not return a build id')
-          print('build_id='+build_id,flush=True)
+          resume = os.environ.get('RESUME_BUILD_ID', '').strip()
+          if resume:
+              build_id = resume
+              print('resuming existing build_id=' + build_id, flush=True)
+          else:
+              status, body = request('POST', f'{BASE}/apps/{APP}/builds', {'workflow_id': WORKFLOW, 'branch': BRANCH})
+              print('start_v3_status=', status, flush=True); print('start_v3_body=', scrub(body), flush=True)
+              build_id=None
+              if status in (200,201,202):
+                  try: build_id=find_build_id(json.loads(body))
+                  except Exception: pass
+              if not build_id:
+                  s2,b2=request('POST', f'{LEGACY}/builds', {'appId':APP,'workflowId':WORKFLOW,'branch':BRANCH})
+                  print('start_legacy_status=',s2,flush=True); print('start_legacy_body=',scrub(b2),flush=True)
+                  if s2 in (200,201,202): build_id=find_build_id(json.loads(b2))
+              if not build_id: raise SystemExit('Codemagic did not return a build id')
+              print('build_id='+build_id,flush=True)
+          (OUT/'build-id.txt').write_text(build_id+'\n')
           (OUT/'build-id.txt').write_text(build_id+'\n')
           last=None; deadline=time.time()+150*60; final=None
           while time.time()<deadline:
