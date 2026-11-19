@@ -104,6 +104,7 @@ jobs:
           script = tree / 'scripts/build-adreno-metal-bridge.py'
           translator = pathlib.Path(subprocess.check_output(['git', '-C', str(copied.parent), 'rev-parse', '--show-toplevel'], text=True).strip())
           subprocess.run(['git', '-C', str(translator), 'reset', '--hard', '46e7cc96a284150bdf19b4a6a7890b0a8bc0ef71'], check=True)
+          subprocess.run(['git', '-C', str(translator), 'clean', '-fd'], check=True)
           for name in ('0063-main-optimizations-on-development-46e7cc96.patch', '0064-copies-leave-unreachable-pages-alone.patch'):
               subprocess.run(['git', '-C', str(translator), 'apply', str(tree / 'drivers/AdrenoMetal/bridge/patches' / name)], check=True)
           text = script.read_text()
