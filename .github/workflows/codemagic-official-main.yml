@@ -77,7 +77,12 @@ jobs:
               status,body=request('GET', f'{BASE}/builds/{build_id}')
               if status!=200:
                   print('poll_status=',status,scrub(body),flush=True); time.sleep(30); continue
-              data=json.loads(body).get('data',{})
+              try:
+                  data=json.loads(body).get('data',{})
+              except Exception:
+                  # Right after start Codemagic can answer 200 with an empty/HTML body
+                  # before the build is materialised; wait instead of crashing.
+                  print('poll_non_json=',scrub(body)[:200],flush=True); time.sleep(20); continue
               state=data.get('status')
               if state!=last:
                   print(f"build_status={state} instance={data.get('instance_type')} queued={data.get('queued_at')} started={data.get('started_at')}",flush=True)
