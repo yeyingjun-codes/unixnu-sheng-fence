@@ -119,7 +119,8 @@ jobs:
           copied.write_text(content[:start] + fallback + content[end:])
           patch = tree / 'drivers/AdrenoMetal/bridge/patches/0065-read-pages-other-platforms.patch'
           patch.parent.mkdir(parents=True, exist_ok=True)
-          diff = subprocess.check_output(['git', '-C', str(copied.parents[5]), 'diff', '--', str(copied.relative_to(copied.parents[5]))], text=True)
+          translator = pathlib.Path(subprocess.check_output(['git', '-C', str(copied.parent), 'rev-parse', '--show-toplevel'], text=True).strip())
+          diff = subprocess.check_output(['git', '-C', str(translator), 'diff', '--', str(copied.relative_to(translator))], text=True)
           assert 'read_pages' in diff and 'not(any(target_os = "linux", target_os = "macos"))' in diff
           patch.write_text(diff)
           print('registered', patch)
