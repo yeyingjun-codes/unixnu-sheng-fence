@@ -99,8 +99,8 @@ jobs:
               echo "Registering the upstream non-Linux/non-macOS read_pages cfg fallback as a recorded patch"
               python3 - "$tree" "$copied" <<'PY'
           import pathlib, subprocess, sys
-          tree = pathlib.Path(sys.argv[1])
-          copied = pathlib.Path(sys.argv[2])
+          tree = pathlib.Path(sys.argv[1]).resolve()
+          copied = pathlib.Path(sys.argv[2]).resolve()
           script = tree / 'scripts/build-adreno-metal-bridge.py'
           text = script.read_text()
           old = "'0064-copies-leave-unreachable-pages-alone.patch']]"
