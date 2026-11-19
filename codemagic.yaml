@@ -716,19 +716,26 @@ workflows:
         script: |
           # sheng-startup-failure-log.patch is a boot-logging diagnostic probe (weak_import
           # boot_log_startup_result), not required for boot. Its kern_exec.c context does not
-          # apply on the current xnu pin (its anchors moved after the owner/union patches).
-          # Drop it so the rest of the kernel patch chain applies cleanly.
+          # apply after the preceding owner/union patches (its anchors moved).
+          # The device applies patches from patches/xnu-12377/series (a manifest), so the
+          # correct move is to drop that line from series, NOT to delete the .patch file.
           set -uo pipefail
           mkdir -p "$DIAG"
           L="$DIAG/06c-drop-startup-log.txt"
           exec > >(tee -a "$L") 2>&1
           set -e
           cd "$WORK/device"
-          for d in patches/xnu-12377 patches/xnu; do
-            p="$d/sheng-startup-failure-log.patch"
-            if [ -f "$p" ]; then echo "removing $p"; rm -v "$p"; fi
+          for s in patches/xnu-12377/series patches/xnu/series; do
+            if [ -f "$s" ]; then
+              grep -v '^sheng-startup-failure-log\.patch$' "$s" > "$s.tmp"
+              if cmp -s "$s" "$s.tmp"; then
+                rm -f "$s.tmp"; echo "no startup-failure-log entry in $s"
+              else
+                mv "$s.tmp" "$s"; echo "removed sheng-startup-failure-log.patch from $s"
+              fi
+            fi
           done
-          grep -rl 'sheng-startup-failure-log' patches/ 2>/dev/null || echo "no remaining references in patches/"
+          grep -n 'startup-failure' patches/*/series 2>/dev/null || echo "no startup-failure-log left in any series"
 
       - name: install WCN7850 firmware (linux-firmware, pinned)
         script: |
