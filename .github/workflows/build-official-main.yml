@@ -85,41 +85,29 @@ jobs:
           print('header_version = 3')
           PY
 
-      - name: package official normal image
-        working-directory: device
+      - name: record read_pages fallback patch into UniXNU source tree
         run: |
-          set +e
-          scripts/package.sh --os "$OS_PROFILE" --uefi ../uefi-sheng --init-data
-          rc=$?
-          if [ "$rc" -ne 0 ] && grep -q 'cannot find value `read_pages`' ../UniXNU/out/sheng/*/sheng_ipados27/logs/runtime.log 2>/dev/null; then
-            echo "Registering the fixed upstream read_pages non-Linux/non-macOS fallback as a recorded 0065 patch"
-            tree=$(find ../UniXNU/out -type d -path '*/sheng_ipados27/tree' -print -quit)
-            python3 - "$tree" <<'PY'
-          import base64, pathlib, subprocess, sys
-          tree = pathlib.Path(sys.argv[1]).resolve()
-          patch = tree / 'drivers/AdrenoMetal/bridge/patches/0065-read-pages-fallback.patch'
+          python3 - <<'PY'
+          import base64, pathlib
+          # Write 0065 into the UniXNU SOURCE tree (not the regenerated out/.../tree),
+          # so every package run rebuilds the working tree with the patch already present.
+          patch = pathlib.Path('UniXNU/drivers/AdrenoMetal/bridge/patches/0065-read-pages-fallback.patch')
+          patch.parent.mkdir(parents=True, exist_ok=True)
           patch.write_bytes(base64.b64decode(
               'ZGlmZiAtLWdpdCBhL2NyYXRlcy9tZXRhbDJ2dWxrYW4tcnVudGltZS9zcmMvY29waWVkLnJzIGIvY3JhdGVzL21ldGFsMnZ1bGthbi1ydW50aW1lL3NyYy9jb3BpZWQucnMKaW5kZXggZDMwM2Y5My4uNGMxNzc5ZCAxMDA2NDQKLS0tIGEvY3JhdGVzL21ldGFsMnZ1bGthbi1ydW50aW1lL3NyYy9jb3BpZWQucnMKKysrIGIvY3JhdGVzL21ldGFsMnZ1bGthbi1ydW50aW1lL3NyYy9jb3BpZWQucnMKQEAgLTI3MDAsOCArMjcwMCwxNCBAQCBwdWIoY3JhdGUpIGZuIHJlYWRfcGFnZXMocGFnZXM6IE5vbk51bGw8dTg+LCBpbnRvOiAmbXV0IFt1OF0pIC0+IGJvb2wgewogCiAvLy8gW2ByZWFkX3BhZ2VzYF0gb24gV2luZG93czogYFJlYWRQcm9jZXNzTWVtb3J5YCBvZiB0aGUgcHJvY2VzcydzIG93biBwYWdlcywgd2hpY2ggYW5zd2VycyBhCiAvLy8gcGFnZSBpdCBjYW5ub3QgcmVhZCB3aXRoIGEgZmFpbHVyZS4KKyNbY2ZnKG5vdChhbnkodGFyZ2V0X29zID0gImxpbnV4IiwgdGFyZ2V0X29zID0gIm1hY29zIikpKV0KK3B1YihjcmF0ZSkgZm4gcmVhZF9wYWdlcyhfcGFnZXM6IE5vbk51bGw8dTg+LCBfaW50bzogJm11dCBbdThdKSAtPiBib29sIHsKKyAgICBmYWxzZQorfQorCisjW2FsbG93KGRlYWRfY29kZSldCiAjW2NmZyh3aW5kb3dzKV0KLXB1YihjcmF0ZSkgZm4gcmVhZF9wYWdlcyhwYWdlczogTm9uTnVsbDx1OD4sIGludG86ICZtdXQgW3U4XSkgLT4gYm9vbCB7CitmbiByZWFkX3BhZ2VzX3dpbmRvd3MocGFnZXM6IE5vbk51bGw8dTg+LCBpbnRvOiAmbXV0IFt1OF0pIC0+IGJvb2wgewogICAgIHVzZSB3aW5kb3dzX3N5czo6V2luMzI6OlN5c3RlbTo6RGlhZ25vc3RpY3M6OkRlYnVnOjpSZWFkUHJvY2Vzc01lbW9yeTsKICAgICB1c2Ugd2luZG93c19zeXM6OldpbjMyOjpTeXN0ZW06OlRocmVhZGluZzo6R2V0Q3VycmVudFByb2Nlc3M7CiAgICAgbGV0IG11dCByZWFkID0gMDsK'))
-          script = tree / 'scripts/build-adreno-metal-bridge.py'
+          script = pathlib.Path('UniXNU/scripts/build-adreno-metal-bridge.py')
           text = script.read_text()
           old = "'0064-copies-leave-unreachable-pages-alone.patch']]"
           new = "'0064-copies-leave-unreachable-pages-alone.patch',\n    '0065-read-pages-fallback.patch']]"
           assert old in text and '0065-read-pages' not in text
           script.write_text(text.replace(old, new, 1))
-          # Reset the translator cache to the clean pin so the official builder applies
-          # 0063 + 0064 + 0065 itself and the integrity check sees a recorded state.
-          src = tree / '.cache/gpu-reference/metal2vulkan'
-          if (src / '.git').is_dir():
-              subprocess.run(['git', '-C', str(src), 'reset', '--hard',
-                              '46e7cc96a284150bdf19b4a6a7890b0a8bc0ef71'], check=True)
-              subprocess.run(['git', '-C', str(src), 'clean', '-fdq'], check=True)
-          print('registered 0065; translator reset to clean pin')
+          print('recorded 0065 into UniXNU source tree and builder chain')
           PY
-            scripts/package.sh --os "$OS_PROFILE" --uefi ../uefi-sheng --init-data
-            rc=$?
-          fi
-          set -e
-          exit "$rc"
+
+      - name: package official normal image
+        working-directory: device
+        run: |
+          scripts/package.sh --os "$OS_PROFILE" --uefi ../uefi-sheng --init-data
 
       - name: registered read_pages patch
         if: always()
@@ -128,7 +116,7 @@ jobs:
           name: official-main-read-pages-patch-${{ github.run_id }}
           retention-days: 30
           if-no-files-found: warn
-          path: UniXNU/out/sheng/*/sheng_ipados27/tree/drivers/AdrenoMetal/bridge/patches/0065-read-pages-fallback.patch
+          path: UniXNU/drivers/AdrenoMetal/bridge/patches/0065-read-pages-fallback.patch
 
       - name: installation seed backup
         if: always() && hashFiles('UniXNU/out/sheng/*/sheng_ipados27/runtime/data.dbr') != ''
