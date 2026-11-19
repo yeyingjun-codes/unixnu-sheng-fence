@@ -108,16 +108,12 @@ jobs:
           assert old in text
           script.write_text(text.replace(old, new, 1))
           content = copied.read_text()
-          marker = '/// [`read_pages`] on Windows:'
-          start = content.index(marker)
-          end = content.index('\n#[cfg(windows)]', start)
-          fallback = '''/// [`read_pages`] where the system is not asked: nothing is copied.
-          #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-          pub(crate) fn read_pages(_pages: NonNull<u8>, _into: &mut [u8]) -> bool {
-              false
-          }
-          '''
-          copied.write_text(content[:start] + fallback + content[end:])
+          old_cfg = '#[cfg(windows)]\npub(crate) fn read_pages(pages: NonNull<u8>, into: &mut [u8]) -> bool {'
+          new_cfg = '#[cfg(not(any(target_os = "linux", target_os = "macos")))]\npub(crate) fn read_pages(_pages: NonNull<u8>, _into: &mut [u8]) -> bool {'
+          assert old_cfg in content
+          content = content.replace(old_cfg, new_cfg, 1)
+          assert 'ReadProcessMemory' in content
+          copied.write_text(content)
           patch = tree / 'drivers/AdrenoMetal/bridge/patches/0065-read-pages-other-platforms.patch'
           patch.parent.mkdir(parents=True, exist_ok=True)
           translator = pathlib.Path(subprocess.check_output(['git', '-C', str(copied.parent), 'rev-parse', '--show-toplevel'], text=True).strip())
