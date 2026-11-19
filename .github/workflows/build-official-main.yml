@@ -125,6 +125,8 @@ jobs:
           patch.write_text(diff)
           print('registered', patch)
           PY
+              echo "Applying the recorded patch through the official Metal bridge builder"
+              python3 "$tree/scripts/build-adreno-metal-bridge.py" --target ios27 --reuse-current
               scripts/package.sh --os "$OS_PROFILE" --uefi ../uefi-sheng --init-data
             else
               exit "$rc"
