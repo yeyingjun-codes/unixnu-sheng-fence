@@ -102,6 +102,9 @@ jobs:
           tree = pathlib.Path(sys.argv[1]).resolve()
           copied = pathlib.Path(sys.argv[2]).resolve()
           script = tree / 'scripts/build-adreno-metal-bridge.py'
+          translator = pathlib.Path(subprocess.check_output(['git', '-C', str(copied.parent), 'rev-parse', '--show-toplevel'], text=True).strip())
+          for name in ('0063-main-optimizations-on-development-46e7cc96.patch', '0064-copies-leave-unreachable-pages-alone.patch'):
+              subprocess.run(['git', '-C', str(translator), 'apply', str(tree / 'drivers/AdrenoMetal/bridge/patches' / name)], check=True)
           text = script.read_text()
           old = "'0064-copies-leave-unreachable-pages-alone.patch']]"
           new = "'0064-copies-leave-unreachable-pages-alone.patch',\n    '0065-read-pages-other-platforms.patch']]"
