@@ -696,6 +696,22 @@ workflows:
           print('patch bytes', patch.stat().st_size)
           PY
 
+      - name: extract proprietary device firmware (video/touch/keyboard)
+        script: |
+          # The public device repo intentionally omits the proprietary blobs
+          # (qcom/sm8550/sheng/vpu30_4v.mbn etc). extract-files.py with no SOURCE
+          # pulls them from the @fetch mirror in proprietary-files.txt and verifies SHA-256.
+          # Without these, package aborts at stage-video-firmware.py.
+          set -uo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/06b-proprietary.txt"
+          exec > >(tee -a "$L") 2>&1
+          set -e
+          cd "$WORK/device"
+          python3 scripts/extract-files.py
+          echo "== staged firmware =="
+          find .cache/firmware -type f -exec ls -l {} \;
+
       - name: install WCN7850 firmware (linux-firmware, pinned)
         script: |
           # device/scripts/build-wifi-userspace.py reads firmware/wcn7850/{amss,m3,board-2}.bin.
