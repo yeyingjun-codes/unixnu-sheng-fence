@@ -1,0 +1,113 @@
+name: build official main normal image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: official-main-normal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: macos-26
+    timeout-minutes: 360
+    env:
+      UNIXNU_UNIQUE_CHIP_ID: 9732b499
+      INIT_DATA: "true"
+      OS_PROFILE: "27"
+    steps:
+      - name: checkout official device main
+        uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU-sheng
+          path: device
+          submodules: recursive
+
+      - name: checkout official UniXNU main
+        uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          path: UniXNU
+          submodules: recursive
+
+      - name: checkout official UEFI sheng
+        uses: actions/checkout@v4
+        with:
+          repository: UniXNU/uefi-sheng
+          path: uefi-sheng
+          submodules: recursive
+
+      - name: tools
+        run: |
+          brew install dtc llvm lld cmake mtools ninja glslang shaderc spirv-tools bison pkgconf rustup blacktop/tap/ipsw
+          {
+            echo "$HOME/.cargo/bin"
+            echo "/opt/homebrew/opt/llvm/bin"
+            echo "/opt/homebrew/opt/lld/bin"
+            echo "/opt/homebrew/opt/bison/bin"
+          } >> "$GITHUB_PATH"
+          rustup toolchain install 1.98.0 --profile minimal --component rust-src
+          ok=1
+          for t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool \
+                   mformat mcopy ipsw; do
+            command -v "$t" >/dev/null || { echo "missing tool: $t"; ok=0; }
+          done
+          for t in lld-link llvm-lib llvm-rc llvm-nm llvm-objcopy; do
+            [ -f "/opt/homebrew/opt/llvm/bin/$t" ] || [ -f "/opt/homebrew/opt/lld/bin/$t" ] || { echo "missing tool: $t"; ok=0; }
+          done
+          [ "$ok" = 1 ]
+
+      - name: platform seed
+        run: |
+          if ! [[ "$UNIXNU_UNIQUE_CHIP_ID" =~ ^[0-9a-fA-F]{8}$ ]]; then
+            echo 'Invalid UNIXNU_UNIQUE_CHIP_ID' >&2
+            exit 1
+          fi
+          echo "platform seed present (8 hex digits)"
+
+      - name: force Android boot header v3 for sheng ABL
+        working-directory: device
+        run: |
+          python3 - <<'PY'
+          import pathlib, tomllib
+          path = pathlib.Path('board.toml')
+          text = path.read_text()
+          marker = '["bootimg"."image"]\n'
+          assert marker in text
+          if 'header_version' not in text:
+              text = text.replace(marker, marker + 'header_version = 3\n', 1)
+              path.write_text(text)
+          data = tomllib.loads(path.read_text())
+          assert data['bootimg']['image']['header_version'] == 3
+          print('header_version = 3')
+          PY
+
+      - name: package official normal image
+        working-directory: device
+        run: |
+          scripts/package.sh --os "$OS_PROFILE" --uefi ../uefi-sheng --init-data
+
+      - name: installation seed backup
+        if: always() && hashFiles('UniXNU/out/sheng/*/sheng_ipados27/runtime/data.dbr') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-main-installation-seed-${{ github.run_id }}
+          retention-days: 30
+          path: |
+            UniXNU/out/sheng/*/sheng_ipados27/runtime/data.dbr
+            UniXNU/out/sheng/*/sheng_ipados27/runtime/inputs.json
+
+      - name: images
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-main-images-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            UniXNU/out/sheng/*/sheng_ipados27/boot/boot.img
+            UniXNU/out/sheng/*/sheng_ipados27/payload/payload.img
+            UniXNU/out/sheng/*/sheng_ipados27/kernel/kernel.macho
+            UniXNU/out/sheng/*/sheng_ipados27/package.manifest.json
