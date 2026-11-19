@@ -88,7 +88,34 @@ jobs:
       - name: package official normal image
         working-directory: device
         run: |
+          set +e
           scripts/package.sh --os "$OS_PROFILE" --uefi ../uefi-sheng --init-data
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            copied=$(find ../UniXNU/out -path '*/metal2vulkan-runtime/src/copied.rs' -print -quit)
+            if [ -n "$copied" ] && grep -q 'cannot find value `read_pages`' ../UniXNU/out/sheng/*/sheng_ipados27/logs/runtime.log; then
+              echo "Applying the upstream non-Linux/non-macOS read_pages cfg fallback"
+              python3 - "$copied" <<'PY'
+          import pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text()
+          start = text.index('/// [`read_pages`] on Windows:')
+          end = text.index('\n#[cfg(test)]', start) if '\n#[cfg(test)]' in text[start:] else len(text)
+          fallback = '''/// [`read_pages`] where the system is not asked: nothing is copied.
+          #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+          pub(crate) fn read_pages(_pages: NonNull<u8>, _into: &mut [u8]) -> bool {
+              false
+          }
+          '''
+          path.write_text(text[:start] + fallback + text[end:])
+          print('patched', path)
+          PY
+              scripts/package.sh --os "$OS_PROFILE" --uefi ../uefi-sheng --init-data
+            else
+              exit "$rc"
+            fi
+          fi
 
       - name: installation seed backup
         if: always() && hashFiles('UniXNU/out/sheng/*/sheng_ipados27/runtime/data.dbr') != ''
