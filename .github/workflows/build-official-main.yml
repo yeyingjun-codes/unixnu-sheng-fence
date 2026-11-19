@@ -100,6 +100,15 @@ jobs:
             UniXNU/out/sheng/*/sheng_ipados27/runtime/data.dbr
             UniXNU/out/sheng/*/sheng_ipados27/runtime/inputs.json
 
+      - name: build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-main-build-logs-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: UniXNU/out/sheng/*/sheng_ipados27/logs/**
+
       - name: images
         uses: actions/upload-artifact@v4
         with:
