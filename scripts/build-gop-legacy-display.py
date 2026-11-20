@@ -248,12 +248,6 @@ run([str(log_source) if arg==str(process_source) else str(log_obj) if arg==str(p
 reset_source=ROOT/'kits/sheng/BootReset.c'
 reset_obj=OUT/'BootReset.o'
 run([str(reset_source) if arg==str(process_source) else str(reset_obj) if arg==str(process_obj) else arg for arg in process_cmd]+['-I',str(ROOT/'kits/sheng')],cwd=pr['directory'])
-# Read-only kqueue-wait resolver: a pure-BSD TU (real eventvar/event_private/
-# filedesc layouts), so it must compile with the full kernel C flags (process_cmd),
-# not the reduced probe flags. It decodes which kqueue a kevent_id wait targets.
-kqwait_source=ROOT/'kits/sheng/BootKqueueWait.c'
-kqwait_obj=OUT/'BootKqueueWait.o'
-run([str(kqwait_source) if arg==str(process_source) else str(kqwait_obj) if arg==str(process_obj) else arg for arg in process_cmd]+['-I',str(ROOT/'kits/sheng')],cwd=pr['directory'])
 # Default-off touch bring-up: C++ board probe plus the generic GENI SPI and Novatek protocol/touch libraries, compiled with the
 # kernel C flags, and the firmware object generated from the copy kept outside Git.
 cmd+=['-I',str(ROOT/'kits/sheng'),'-I',str(ROOT/'kits/Sm8550Platform'),'-I',str(ROOT/'drivers/QcomGeniSpi'),'-I',str(ROOT/'drivers/ShengNovatekTouch'),'-I',str(ROOT/'drivers/ShengUfs')]
@@ -330,10 +324,10 @@ run([llvm/'llvm-objcopy','--remove-section=__DATA,__mod_init_func',
      keyevents/'NativeKeyStoreEvents.o',keyevents_late])
 require(code((keyevents/'NativeKeyStoreEvents.o').read_bytes(),macho((keyevents/'NativeKeyStoreEvents.o').read_bytes()))==
         code(keyevents_late.read_bytes(),macho(keyevents_late.read_bytes())),'Owned event-service instructions unchanged by late init staging')
-run(['xcrun','ar','rcs',archive,late,OUT/'original-bindings.o',OUT/'LegacyDisplayProbe.o',hid_obj,keystore_obj,process_obj,trace_obj,log_obj,reset_obj,kqwait_obj,
+run(['xcrun','ar','rcs',archive,late,OUT/'original-bindings.o',OUT/'LegacyDisplayProbe.o',hid_obj,keystore_obj,process_obj,trace_obj,log_obj,reset_obj,
      hid_dir/'NativeHidInput.late.o',hid_dir/'hid-original-bindings.o',keyevents_late,touch_cpp_obj,cpufreq_obj,gpupower_obj,wifi_obj,wifinet_late,adsp_obj,audio_obj,buttons_obj,backlight_obj,dpu_obj,backlight_class_late,battery_obj,battery_class_late,audio_class_late,*touch_objs,*wifi_module_objs])
 sources=[ROOT/'drivers/GopFramebuffer/NativeLegacyDisplay.cpp',
-         ROOT/'drivers/GopFramebuffer/NativeLegacyRequest.h',source,hid_source,keystore_source,process_source,trace_source,log_source,reset_source,kqwait_source,ROOT/'kits/sheng/BootResetCore.h',ROOT/'kits/sheng/BootUiTraceCore.h',ROOT/'kits/sheng/BootUiTraceDetails.h',
+         ROOT/'drivers/GopFramebuffer/NativeLegacyRequest.h',source,hid_source,keystore_source,process_source,trace_source,log_source,reset_source,ROOT/'kits/sheng/BootResetCore.h',ROOT/'kits/sheng/BootUiTraceCore.h',ROOT/'kits/sheng/BootUiTraceDetails.h',
          ROOT/'drivers/ShengHidInput/NativeHidInput.cpp',ROOT/'scripts/build-sheng-hid-input.py',
          ROOT/'drivers/AppleKeyStoreState/NativeKeyStoreEvents.cpp',touch_cpp,cpufreq_cpp,wifi_cpp,adsp_cpp,*adsp_c,audio_cpp,buttons_cpp,backlight_cpp,backlight_class_cpp,*backlight_c,ROOT/'kits/sheng/GeniI2c.h',battery_cpp,battery_class_cpp,audio_class_cpp,ROOT/'kits/sheng/TouchBoard.h',
          ROOT/'drivers/QcomGeniSpi/GeniSpi.c',ROOT/'drivers/QcomGeniSpi/GeniSpi.h',ROOT/'drivers/ShengNovatekTouch/NvtProtocol.c',
