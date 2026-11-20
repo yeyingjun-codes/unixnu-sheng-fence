@@ -88,6 +88,15 @@ workflows:
     - name: platform seed sanity
       script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/05-seed-check.txt\"\nexec > >(tee -a \"$L\") 2>&1\nif ! [[ \"${UNIXNU_UNIQUE_CHIP_ID:-}\" =~ ^[0-9a-fA-F]{8}$ ]]; then\n  echo 'Set UNIXNU_UNIQUE_CHIP_ID\
         \ (8 hex digits) in the sheng-secrets variable group.' >&2\n  exit 1\nfi\necho \"platform seed present (8 hex digits)\"\n"
+    - name: fix the upstream mesa patch header
+      script: "# UniXNU@82b847c4 ships patches/mesa/turnip-frame-diagnostics.patch whose first file\n# (\"tu_frame_diagnostic.h\") is a new file but carries no \"new file mode\" line. With -p1\n# git strips\
+        \ \"--- /dev/null\" to \"dev/null\" and aborts with\n#   error: dev/null: No such file or directory\n# (reproduced locally with git 2.55). Nothing else in the build is touched; the rest of\n# the\
+        \ patch and all 81 kernel patches apply cleanly.\nset -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08a-mesa-patch.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\np=\"$WORK/UniXNU/patches/mesa/turnip-frame-diagnostics.patch\"\
+        \n[ -f \"$p\" ] || { echo \"missing $p\"; exit 1; }\nshasum -a 256 \"$p\"\npython3 - \"$p\" <<'PY'\nimport sys, pathlib\npath = pathlib.Path(sys.argv[1])\ntext = path.read_text()\nmarker = 'diff\
+        \ --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\\n--- /dev/null'\npatched = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\\\
+        nnew file mode 100644\\n--- /dev/null'\nif 'new file mode 100644\\n--- /dev/null' in text:\n    print('already carries new file mode; nothing to do')\nelif marker not in text:\n    raise SystemExit('unexpected\
+        \ patch layout; refusing to rewrite')\nelse:\n    path.write_text(text.replace(marker, patched, 1))\n    print('inserted \"new file mode 100644\" for tu_frame_diagnostic.h')\nPY\nshasum -a 256 \"\
+        $p\"\nsed -n '1,6p' \"$p\"\n"
     - name: package
       script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08-package.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\n# $CM_ENV appends were not visible to later steps, so build the PATH here as well.\n\
         # cargo/rustc live in the keg-only rustup prefix; ipsw went to ~/.local/bin.\nRUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH\"\
