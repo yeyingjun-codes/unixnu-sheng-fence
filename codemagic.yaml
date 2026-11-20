@@ -169,13 +169,13 @@ workflows:
     - name: verify probe17 kqueue resolver build inputs
       script: 'set -euo pipefail
 
-        mkdir -p "$DIAG"
+        mkdir -p ""
 
-        L="$DIAG/07e-kqueue-resolver.txt"
+        L="/07e-kqueue-resolver.txt"
 
-        exec > >(tee -a "$L") 2>&1
+        exec > >(tee -a "") 2>&1
 
-        cd "$WORK/device"
+        cd "/device"
 
         python3 - <<''PY''
 
@@ -201,11 +201,15 @@ workflows:
 
         assert ''kqf->kqf_count'' in resolver
 
-        build = pathlib.Path(''scripts/build-gop-legacy-display.py'').read_text()
+        # The resolver is compiled by the UniXNU source-storage builder (libShengSourceStorage),
 
-        assert ''kqwait_obj'' in build
+        # which is the archive that links BootUiTraceProbe.o. Verify THAT builder, not legacy-display.
 
-        print(''PASS: probe17 + v10 role trace + kqueue resolver are in the build'')
+        ss = pathlib.Path(''../UniXNU/scripts/build-sheng-source-storage.py'').read_text()
+
+        assert ''BootKqueueWait.c'' in ss, ''resolver not registered in source-storage builder''
+
+        print(''PASS: probe17 + v10 role trace + kqueue resolver are in the build (source-storage)'')
 
         PY
 
