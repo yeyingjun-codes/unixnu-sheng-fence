@@ -1,0 +1,210 @@
+name: codemagic-fallback-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      account_index:
+        description: 'Force a specific account index (1-10); empty = auto-pick first usable'
+        required: false
+        default: ''
+      resume_build_id:
+        description: 'Existing Codemagic build id to watch instead of starting a new one'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  fallback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      REPOSITORY_URL: https://github.com/yeyingjun-codes/unixnu-sheng-fence.git
+      WORKFLOW_ID: sheng-kqueue-wait
+      BRANCH: probe-kqueue
+      UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+      SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
+      GHTOKEN: ${{ secrets.GHTOKEN }}
+      FORCE_INDEX: ${{ inputs.account_index }}
+      RESUME_BUILD_ID: ${{ inputs.resume_build_id }}
+      T1: ${{ secrets.CODEMAGIC_TOKEN_1 }}
+      T2: ${{ secrets.CODEMAGIC_TOKEN_2 }}
+      T3: ${{ secrets.CODEMAGIC_TOKEN_3 }}
+      T4: ${{ secrets.CODEMAGIC_TOKEN_4 }}
+      T5: ${{ secrets.CODEMAGIC_TOKEN_5 }}
+      T6: ${{ secrets.CODEMAGIC_TOKEN_6 }}
+      T7: ${{ secrets.CODEMAGIC_TOKEN_7 }}
+      T8: ${{ secrets.CODEMAGIC_TOKEN_8 }}
+      T9: ${{ secrets.CODEMAGIC_TOKEN_9 }}
+      T10: ${{ secrets.CODEMAGIC_TOKEN_10 }}
+    steps:
+      - name: Pick usable Codemagic account, provision app, start and watch kqueue build
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+          from pathlib import Path
+
+          BASE='https://codemagic.io/api/v3'
+          LEGACY='https://api.codemagic.io'
+          REPO_URL=os.environ['REPOSITORY_URL']
+          WORKFLOW=os.environ['WORKFLOW_ID']
+          BRANCH=os.environ['BRANCH']
+          OUT=Path('codemagic-output'); OUT.mkdir(exist_ok=True)
+          FORCE=os.environ.get('FORCE_INDEX','').strip()
+          RESUME=os.environ.get('RESUME_BUILD_ID','').strip()
+
+          def request(token, method, url, payload=None, raw=False):
+              data=json.dumps(payload).encode() if payload is not None else None
+              headers={'x-auth-token':token,'Content-Type':'application/json','Accept':'application/json','User-Agent':'sheng-fallback'}
+              for attempt in range(4):
+                  req=urllib.request.Request(url,data=data,headers=headers,method=method)
+                  try:
+                      with urllib.request.urlopen(req,timeout=90) as r:
+                          body=r.read()
+                          return (r.status,body) if raw else (r.status,body.decode('utf-8','replace'))
+                  except urllib.error.HTTPError as e:
+                      return (e.code,e.read()) if raw else (e.code,e.read().decode('utf-8','replace'))
+                  except (urllib.error.URLError,ConnectionError,TimeoutError,OSError) as e:
+                      last=e; time.sleep(4*(attempt+1))
+              return -1, str(last)[:200]
+
+          def scrub(text, token):
+              return (text or '').replace(token,'***')[:1500]
+
+          def app_id_of(obj):
+              if isinstance(obj,dict):
+                  for k in ('_id','id','appId','app_id'):
+                      v=obj.get(k)
+                      if isinstance(v,str) and len(v)>=12: return v
+                  for v in obj.values():
+                      f=app_id_of(v)
+                      if f: return f
+              return None
+
+          def find_build_id(obj):
+              if isinstance(obj,dict):
+                  for k in ('_id','id','buildId','build_id'):
+                      v=obj.get(k)
+                      if isinstance(v,str) and len(v)>=12: return v
+                  for v in obj.values():
+                      f=find_build_id(v)
+                      if f: return f
+              elif isinstance(obj,list):
+                  for v in obj:
+                      f=find_build_id(v)
+                      if f: return f
+              return None
+
+          # 1) provision an app on a usable account.
+          chosen=None
+          indices=[FORCE] if FORCE else [str(i) for i in range(1,11)]
+          for idx in indices:
+              tok=os.environ.get('T'+idx,'')
+              if not tok:
+                  print(f'token#{idx}: missing, skip',flush=True); continue
+              code,body=request(tok,'GET',f'{BASE}/user/apps')
+              if code!=200:
+                  print(f'token#{idx}: invalid ({code}), skip',flush=True); continue
+              # find or create the app for our repo
+              app_id=None
+              try:
+                  data=json.loads(body)
+                  apps=data.get('data') or data.get('applications') or data.get('items') or []
+                  for a in apps:
+                      if 'unixnu-sheng-fence' in json.dumps(a):
+                          app_id=a.get('_id') or a.get('id'); break
+              except Exception: pass
+              if not app_id:
+                  c,b=request(tok,'POST',f'{LEGACY}/apps',{'repositoryUrl':REPO_URL})
+                  if c in (200,201,202):
+                      try: app_id=app_id_of(json.loads(b))
+                      except Exception: app_id=None
+                  print(f'token#{idx}: create_app http={c} id={app_id}',flush=True)
+                  if not app_id:
+                      print(f'token#{idx}: create failed {scrub(b,tok)}',flush=True)
+              if not app_id:
+                  print(f'token#{idx}: no usable app, skip',flush=True); continue
+              # sync secrets into sheng-secrets group (idempotent)
+              for key,val in [('UNIXNU_UNIQUE_CHIP_ID',os.environ['UNIXNU_UNIQUE_CHIP_ID']),
+                              ('SEED_PASSPHRASE',os.environ['SEED_PASSPHRASE']),
+                              ('GITHUB_TOKEN',os.environ['GHTOKEN'])]:
+                  sc,sb=request(tok,'POST',f'{LEGACY}/apps/{app_id}/variables',
+                                {'key':key,'value':val,'group':'sheng-secrets','secure':True})
+                  if sc not in (200,201,202,409):
+                      print(f'token#{idx}: secret {key} http={sc} {scrub(sb,tok)}',flush=True)
+              print(f'token#{idx}: PROVISIONED app={app_id}',flush=True)
+              chosen=(idx,tok,app_id); break
+
+          if not chosen:
+              raise SystemExit('No usable Codemagic account among provided tokens')
+          idx,TOKEN,APP=chosen
+          print(f'USING account #{idx} app={APP}',flush=True)
+          (OUT/'account.json').write_text(json.dumps({'index':idx,'app_id':APP}))
+
+          # 2) start (or resume) the kqueue-wait build
+          if RESUME:
+              build_id=RESUME
+          else:
+              status,body=request(TOKEN,'POST',f'{BASE}/apps/{APP}/builds',{'workflow_id':WORKFLOW,'branch':BRANCH})
+              build_id=None
+              if status in (200,201,202):
+                  try: build_id=find_build_id(json.loads(body))
+                  except Exception: build_id=None
+              if not build_id:
+                  s2,b2=request(TOKEN,'POST',f'{LEGACY}/builds',{'appId':APP,'workflowId':WORKFLOW,'branch':BRANCH})
+                  print('legacy_start',s2,scrub(b2,TOKEN),flush=True)
+                  if s2 in (200,201,202):
+                      try: build_id=find_build_id(json.loads(b2))
+                      except Exception: build_id=None
+              if not build_id:
+                  raise SystemExit(f'could not start build (http {status})')
+          print('build_id='+build_id,flush=True)
+          (OUT/'build-id.txt').write_text(build_id+'\n')
+
+          # 3) watch to completion
+          last=None; final=None; deadline=time.time()+150*60
+          while time.time()<deadline:
+              st,body=request(TOKEN,'GET',f'{BASE}/builds/{build_id}')
+              if st!=200:
+                  time.sleep(30); continue
+              try: data=json.loads(body).get('data',{})
+              except Exception: time.sleep(20); continue
+              state=data.get('status')
+              if state!=last:
+                  print('build_status='+str(state),flush=True); last=state
+              if state in ('success','finished','failed','canceled','timeout'):
+                  final=data; break
+              time.sleep(30)
+          if final is None: raise SystemExit('watch timeout')
+
+          st,ab=request(TOKEN,'GET',f'{BASE}/builds/{build_id}/actions')
+          actions=json.loads(ab).get('data',[]) if st==200 else []
+          for a in actions: print('step',a.get('status'),a.get('name'),flush=True)
+          (OUT/'summary.json').write_text(json.dumps({'build_id':build_id,'final':final,'actions':actions},indent=2))
+
+          # 4) download artifacts
+          for art in (final.get('artifacts') or []):
+              name=art.get('name') or 'artifact'; url=art.get('short_lived_download_url')
+              if not url: continue
+              target=OUT/name
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url,headers={'x-auth-token':TOKEN}),timeout=600) as r:
+                      target.write_bytes(r.read())
+              except Exception:
+                  with urllib.request.urlopen(url,timeout=600) as r:
+                      target.write_bytes(r.read())
+              print('downloaded',name,target.stat().st_size,flush=True)
+          ok=final.get('status') in ('success','finished') and not any(a.get('status') not in ('success','skipped') for a in actions)
+          if not ok: raise SystemExit(1)
+          print('BUILD_SUCCESS',flush=True)
+          PY
+      - name: Upload kqueue output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codemagic-kqueue-wait-output
+          retention-days: 30
+          if-no-files-found: warn
+          path: codemagic-output/**
