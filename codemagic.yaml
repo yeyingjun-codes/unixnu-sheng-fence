@@ -169,10 +169,10 @@ workflows:
     - name: verify probe17 kqueue resolver build inputs
       script: |
         set -euo pipefail
-        mkdir -p ""
-        L="/07e-kqueue-resolver.txt"
-        exec > >(tee -a "") 2>&1
-        cd "/device"
+        mkdir -p "$DIAG"
+        L="$DIAG/07e-kqueue-resolver.txt"
+        exec > >(tee -a "$L") 2>&1
+        cd "$WORK/device"
         python3 ci/verify_kqueue_inputs.py
     - name: decrypt and install the preserved Data seed
       script: "set -euo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/06-seed.txt\"\nexec > >(tee -a \"$L\") 2>&1\nopenssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \\\n  -in \"$WORK/device/seed/data.dbr.enc\"\
