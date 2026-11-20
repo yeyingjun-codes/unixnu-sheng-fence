@@ -99,7 +99,7 @@ jobs:
 
           # 1) provision an app on a usable account.
           chosen=None
-          indices=[FORCE] if FORCE else [str(i) for i in range(1,11)]
+          indices=[FORCE] if FORCE else [str(i) for i in range(2,11)]
           for idx in indices:
               tok=os.environ.get('T'+idx,'')
               if not tok:
@@ -135,32 +135,33 @@ jobs:
                   if sc not in (200,201,202,409):
                       print(f'token#{idx}: secret {key} http={sc} {scrub(sb,tok)}',flush=True)
               print(f'token#{idx}: PROVISIONED app={app_id}',flush=True)
-              chosen=(idx,tok,app_id); break
+              # A listed/created app does NOT prove billing works (token#1 has an
+              # app but is 402). The real test is whether a build can START.
+              if RESUME:
+                  build_id=RESUME
+              else:
+                  status,body=request(tok,'POST',f'{BASE}/apps/{app_id}/builds',{'workflow_id':WORKFLOW,'branch':BRANCH})
+                  build_id=None
+                  if status in (200,201,202):
+                      try: build_id=find_build_id(json.loads(body))
+                      except Exception: build_id=None
+                  if not build_id:
+                      s2,b2=request(tok,'POST',f'{LEGACY}/builds',{'appId':app_id,'workflowId':WORKFLOW,'branch':BRANCH})
+                      if s2 in (200,201,202):
+                          try: build_id=find_build_id(json.loads(b2))
+                          except Exception: build_id=None
+                      else:
+                          print(f'token#{idx}: START failed http={s2} (billing/limit), trying next account',flush=True)
+                  if status==402 or (not build_id):
+                      print(f'token#{idx}: cannot start build, trying next',flush=True)
+                      continue
+              chosen=(idx,tok,app_id,build_id); break
 
           if not chosen:
               raise SystemExit('No usable Codemagic account among provided tokens')
-          idx,TOKEN,APP=chosen
-          print(f'USING account #{idx} app={APP}',flush=True)
+          idx,TOKEN,APP,build_id=chosen
+          print(f'USING account #{idx} app={APP} build={build_id}',flush=True)
           (OUT/'account.json').write_text(json.dumps({'index':idx,'app_id':APP}))
-
-          # 2) start (or resume) the kqueue-wait build
-          if RESUME:
-              build_id=RESUME
-          else:
-              status,body=request(TOKEN,'POST',f'{BASE}/apps/{APP}/builds',{'workflow_id':WORKFLOW,'branch':BRANCH})
-              build_id=None
-              if status in (200,201,202):
-                  try: build_id=find_build_id(json.loads(body))
-                  except Exception: build_id=None
-              if not build_id:
-                  s2,b2=request(TOKEN,'POST',f'{LEGACY}/builds',{'appId':APP,'workflowId':WORKFLOW,'branch':BRANCH})
-                  print('legacy_start',s2,scrub(b2,TOKEN),flush=True)
-                  if s2 in (200,201,202):
-                      try: build_id=find_build_id(json.loads(b2))
-                      except Exception: build_id=None
-              if not build_id:
-                  raise SystemExit(f'could not start build (http {status})')
-          print('build_id='+build_id,flush=True)
           (OUT/'build-id.txt').write_text(build_id+'\n')
 
           # 3) watch to completion
