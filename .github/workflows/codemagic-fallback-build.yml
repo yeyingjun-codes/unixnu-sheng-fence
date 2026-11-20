@@ -11,6 +11,14 @@ on:
         description: 'Existing Codemagic build id to watch instead of starting a new one'
         required: false
         default: ''
+      workflow_id:
+        description: 'Codemagic workflow id to run (default: sheng-kqueue-wait)'
+        required: false
+        default: 'sheng-kqueue-wait'
+      branch:
+        description: 'Branch to build (default: probe-kqueue)'
+        required: false
+        default: 'probe-kqueue'
 
 permissions:
   contents: read
@@ -21,8 +29,8 @@ jobs:
     timeout-minutes: 180
     env:
       REPOSITORY_URL: https://github.com/yeyingjun-codes/unixnu-sheng-fence.git
-      WORKFLOW_ID: sheng-kqueue-wait
-      BRANCH: probe-kqueue
+      WORKFLOW_ID: ${{ inputs.workflow_id }}
+      BRANCH: ${{ inputs.branch }}
       UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
       SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
       GHTOKEN: ${{ secrets.GHTOKEN }}
