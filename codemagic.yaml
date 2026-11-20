@@ -81,10 +81,11 @@ workflows:
         '
     - name: verify the device tree is the T0 baseline
       script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/04-baseline.txt\"\nexec > >(tee -a \"$L\") 2>&1\ncd \"$WORK/device\"\npython3 - <<'PY'\nimport pathlib, sys, tomllib\nboard = tomllib.load(open('board.toml',\
-        \ 'rb'))\nargs = board['payload']['kernel_args']\nprofile = board['payload'].get('os_profile') or board.get('os_profile')\nprint('kernel_args =', len(args))\nprint('os_profile  =', profile)\nbad\
-        \ = []\nif len(args) != 47:\n    bad.append('kernel_args is %d, expected 47 (wrong device tree)' % len(args))\nif profile != 'ipados-27.0.1-24A446':\n    bad.append('os_profile is %r, expected ipados-27.0.1-24A446'\
-        \ % (profile,))\nfor f in ('package/WifiFirmware.c', 'package/BootWatchdogPolicy.c', 'scripts/package.sh', 'seed/data.dbr.enc'):\n    if not pathlib.Path(f).is_file():\n        bad.append('missing\
-        \ ' + f)\nif bad:\n    print('\\n'.join(bad)); sys.exit(1)\nprint('device tree matches the T0 baseline')\nPY\ngrep -A7 'id = \"Adreno740\"' ../UniXNU/components.toml | head -10\n"
+        \ 'rb'))\nargs = board['payload']['kernel_args']\nprofile = board['payload'].get('os_profile') or board.get('os_profile') or board.get('os', {}).get('os_profile')\nprint('kernel_args =', len(args))\n\
+        print('os_profile  =', profile)\nbad = []\nif len(args) != 47:\n    bad.append('kernel_args is %d, expected 47 (wrong device tree)' % len(args))\nif profile != 'ipados-27.0.1-24A446':\n    bad.append('os_profile\
+        \ is %r, expected ipados-27.0.1-24A446' % (profile,))\nfor f in ('package/WifiFirmware.c', 'package/BootWatchdogPolicy.c', 'scripts/package.sh', 'seed/data.dbr.enc'):\n    if not pathlib.Path(f).is_file():\n\
+        \        bad.append('missing ' + f)\nif bad:\n    print('\\n'.join(bad)); sys.exit(1)\nprint('device tree matches the T0 baseline')\nPY\ngrep -A7 'id = \"Adreno740\"' ../UniXNU/components.toml |\
+        \ head -10\n"
     - name: platform seed sanity
       script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/05-seed-check.txt\"\nexec > >(tee -a \"$L\") 2>&1\nif ! [[ \"${UNIXNU_UNIQUE_CHIP_ID:-}\" =~ ^[0-9a-fA-F]{8}$ ]]; then\n  echo 'Set UNIXNU_UNIQUE_CHIP_ID\
         \ (8 hex digits) in the sheng-secrets variable group.' >&2\n  exit 1\nfi\necho \"platform seed present (8 hex digits)\"\n"
@@ -166,17 +167,53 @@ workflows:
         \ not in (path, *path.parents)):\n                raise SystemExit(f'unexpected archive member: {member.name}')\n        package.extractall(deps)\nprint('deps ready')\nPY\necho \"== upstream check\
         \ ==\"\npython3 tools/fetch-sources.py --check\ncat out/source-identity.json\n"
     - name: verify probe17 kqueue resolver build inputs
-      script: "set -euo pipefail\n          mkdir -p \"$DIAG\"\n          L=\"$DIAG/07e-kqueue-resolver.txt\"\n          exec > >(tee -a \"$L\") 2>&1\n          cd \"$WORK/device\"\n          python3 -\
-        \ <<'PY'\n          import pathlib, tomllib\n          board = tomllib.loads(pathlib.Path('board.toml').read_text())\n          args = board['payload']['kernel_args']\n          assert 'native-ufs-probe=17'\
-        \ in args, args\n          assert 'native-ufs-root=1' not in args, args\n          probe = pathlib.Path('package/BootUiTraceProbe.c').read_text()\n          assert 'boot_kqueue_wait_describe' in\
-        \ probe\n          assert 'KQ%c waits' in probe\n          resolver = pathlib.Path('package/BootKqueueWait.c').read_text()\n          assert '#include <sys/event_private.h>' in resolver\n      \
-        \    assert 'kqf->kqf_count' in resolver\n          build = pathlib.Path('scripts/build-gop-legacy-display.py').read_text()\n          assert 'kqwait_obj' in build\n          print('PASS: probe17\
-        \ + v10 role trace + kqueue resolver are in the build')\n          PY\n"
+      script: 'set -euo pipefail
+
+        mkdir -p "$DIAG"
+
+        L="$DIAG/07e-kqueue-resolver.txt"
+
+        exec > >(tee -a "$L") 2>&1
+
+        cd "$WORK/device"
+
+        python3 - <<''PY''
+
+        import pathlib, tomllib
+
+        board = tomllib.loads(pathlib.Path(''board.toml'').read_text())
+
+        args = board[''payload''][''kernel_args'']
+
+        assert ''native-ufs-probe=17'' in args, args
+
+        assert ''native-ufs-root=1'' not in args, args
+
+        probe = pathlib.Path(''package/BootUiTraceProbe.c'').read_text()
+
+        assert ''boot_kqueue_wait_describe'' in probe
+
+        assert ''KQ%c waits'' in probe
+
+        resolver = pathlib.Path(''package/BootKqueueWait.c'').read_text()
+
+        assert ''#include <sys/event_private.h>'' in resolver
+
+        assert ''kqf->kqf_count'' in resolver
+
+        build = pathlib.Path(''scripts/build-gop-legacy-display.py'').read_text()
+
+        assert ''kqwait_obj'' in build
+
+        print(''PASS: probe17 + v10 role trace + kqueue resolver are in the build'')
+
+        PY
+
+        '
     - name: decrypt and install the preserved Data seed
-      script: "set -euo pipefail\n          mkdir -p \"$DIAG\"\n          L=\"$DIAG/06-seed.txt\"\n          exec > >(tee -a \"$L\") 2>&1\n          openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \\\n\
-        \            -in \"$WORK/device/seed/data.dbr.enc\" -out \"$WORK/data.dbr\" -pass env:SEED_PASSPHRASE\n          shasum -a 256 \"$WORK/data.dbr\"\n          dest=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime\"\
-        \n          mkdir -p \"$dest\"\n          cp \"$WORK/data.dbr\" \"$dest/data.dbr\"\n          test \"$(shasum -a 256 \"$dest/data.dbr\" | cut -d' ' -f1)\" = \"426d36abe9d7652c28de69fcfc3d48ce11803e8c50594fec8b94c5ad543c44fc\"\
-        \n"
+      script: "set -euo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/06-seed.txt\"\nexec > >(tee -a \"$L\") 2>&1\nopenssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \\\n  -in \"$WORK/device/seed/data.dbr.enc\"\
+        \ -out \"$WORK/data.dbr\" -pass env:SEED_PASSPHRASE\nshasum -a 256 \"$WORK/data.dbr\"\ndest=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime\"\nmkdir -p \"$dest\"\ncp \"$WORK/data.dbr\"\
+        \ \"$dest/data.dbr\"\ntest \"$(shasum -a 256 \"$dest/data.dbr\" | cut -d' ' -f1)\" = \"426d36abe9d7652c28de69fcfc3d48ce11803e8c50594fec8b94c5ad543c44fc\"\n"
     - name: package
       script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08-package.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\n# $CM_ENV appends were not visible to later steps, so build the PATH here as well.\n\
         # cargo/rustc live in the keg-only rustup prefix; ipsw went to ~/.local/bin.\nRUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH\"\
