@@ -178,6 +178,18 @@ workflows:
       script: "set -euo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/06-seed.txt\"\nexec > >(tee -a \"$L\") 2>&1\nopenssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \\\n  -in \"$WORK/device/seed/data.dbr.enc\"\
         \ -out \"$WORK/data.dbr\" -pass env:SEED_PASSPHRASE\nshasum -a 256 \"$WORK/data.dbr\"\ndest=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime\"\nmkdir -p \"$dest\"\ncp \"$WORK/data.dbr\"\
         \ \"$dest/data.dbr\"\ntest \"$(shasum -a 256 \"$dest/data.dbr\" | cut -d' ' -f1)\" = \"426d36abe9d7652c28de69fcfc3d48ce11803e8c50594fec8b94c5ad543c44fc\"\n"
+    - name: install the GPU client-open report v10 probe
+      script: |
+        set -euo pipefail
+        mkdir -p "$DIAG"
+        L="$DIAG/07d2-gpu-client-open-v10.txt"
+        exec > >(tee -a "$L") 2>&1
+        test -f "$WORK/device/ci/NativeUfs.probe17-gpuopens.cpp"
+        test -f "$WORK/device/drivers/ShengUfs/NativeUfs.cpp"
+        cp "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" "$DIAG/NativeUfs.before-probe17-v10.cpp"
+        cp "$WORK/device/ci/NativeUfs.probe17-gpuopens.cpp" "$WORK/device/drivers/ShengUfs/NativeUfs.cpp"
+        grep -n 'GPU client-open report' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
+        grep -n 'boot_ui_trace_role_rows' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
     - name: package
       script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08-package.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\n# $CM_ENV appends were not visible to later steps, so build the PATH here as well.\n\
         # cargo/rustc live in the keg-only rustup prefix; ipsw went to ~/.local/bin.\nRUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH\"\
