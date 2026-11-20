@@ -190,6 +190,23 @@ workflows:
         cp "$WORK/device/ci/NativeUfs.probe17-gpuopens.cpp" "$WORK/device/drivers/ShengUfs/NativeUfs.cpp"
         grep -n 'GPU client-open report' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
         grep -n 'boot_ui_trace_role_rows' "$WORK/device/drivers/ShengUfs/NativeUfs.cpp" | head -3
+    - name: instrument Adreno submit diagnostics
+      script: |
+        set -euo pipefail
+        mkdir -p "$DIAG"
+        L="$DIAG/07f-adreno-submit-probe.txt"
+        exec > >(tee -a "$L") 2>&1
+        python3 "$WORK/device/ci/patch_submit_fail_ci.py" "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp"
+        grep -n 'native_adreno_submit_fail' "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp" | head -3
+        grep -n 'native_adreno_cp_state' "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoSubmit.cpp" | head -3
+    - name: instrument Adreno property-read ring
+      script: |
+        set -euo pipefail
+        mkdir -p "$DIAG"
+        L="$DIAG/07g-adreno-property-read-probe.txt"
+        exec > >(tee -a "$L") 2>&1
+        python3 "$WORK/device/ci/patch_property_read_ci.py" "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoPublish.cpp"
+        grep -n 'native_adreno_property_read_log' "$WORK/UniXNU/drivers/Adreno740/NativeAdrenoPublish.cpp" | head -5
     - name: package
       script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08-package.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\n# $CM_ENV appends were not visible to later steps, so build the PATH here as well.\n\
         # cargo/rustc live in the keg-only rustup prefix; ipsw went to ~/.local/bin.\nRUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH\"\
