@@ -163,6 +163,28 @@ workflows:
           PY
           grep -A7 'id = "Adreno740"' ../UniXNU/components.toml | head -10
 
+      - name: select normal UFS root boot (no probe, no autoreset)
+        script: |
+          set -euo pipefail
+          mkdir -p "$DIAG"
+          L="$DIAG/04b-normal-args.txt"
+          exec > >(tee -a "$L") 2>&1
+          cd "$WORK/device"
+          python3 - <<'PY'
+          import pathlib, tomllib
+          p = pathlib.Path('board.toml')
+          text = p.read_text()
+          assert 'native-ufs-probe=17' in text
+          text = text.replace('native-ufs-probe=17', 'native-ufs-root=1')
+          p.write_text(text)
+          data = tomllib.loads(p.read_text())
+          args = data['payload']['kernel_args']
+          assert 'native-ufs-root=1' in args
+          assert not any(a.startswith('native-ufs-probe') for a in args)
+          assert not any(a.startswith('sheng-autoreset') for a in args)
+          print('normal boot args: native-ufs-root=1, no probe, no autoreset')
+          PY
+
       - name: platform seed sanity
         script: |
           set -uo pipefail
