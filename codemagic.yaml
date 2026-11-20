@@ -167,53 +167,13 @@ workflows:
         \ not in (path, *path.parents)):\n                raise SystemExit(f'unexpected archive member: {member.name}')\n        package.extractall(deps)\nprint('deps ready')\nPY\necho \"== upstream check\
         \ ==\"\npython3 tools/fetch-sources.py --check\ncat out/source-identity.json\n"
     - name: verify probe17 kqueue resolver build inputs
-      script: 'set -euo pipefail
-
+      script: |
+        set -euo pipefail
         mkdir -p ""
-
         L="/07e-kqueue-resolver.txt"
-
         exec > >(tee -a "") 2>&1
-
         cd "/device"
-
-        python3 - <<''PY''
-
-        import pathlib, tomllib
-
-        board = tomllib.loads(pathlib.Path(''board.toml'').read_text())
-
-        args = board[''payload''][''kernel_args'']
-
-        assert ''native-ufs-probe=17'' in args, args
-
-        assert ''native-ufs-root=1'' not in args, args
-
-        probe = pathlib.Path(''package/BootUiTraceProbe.c'').read_text()
-
-        assert ''boot_kqueue_wait_describe'' in probe
-
-        assert ''KQ%c waits'' in probe
-
-        resolver = pathlib.Path(''package/BootKqueueWait.c'').read_text()
-
-        assert ''#include <sys/event_private.h>'' in resolver
-
-        assert ''kqf->kqf_count'' in resolver
-
-        # The resolver is compiled by the UniXNU source-storage builder (libShengSourceStorage),
-
-        # which is the archive that links BootUiTraceProbe.o. Verify THAT builder, not legacy-display.
-
-        ss = pathlib.Path(''../UniXNU/scripts/build-sheng-source-storage.py'').read_text()
-
-        assert ''BootKqueueWait.c'' in ss, ''resolver not registered in source-storage builder''
-
-        print(''PASS: probe17 + v10 role trace + kqueue resolver are in the build (source-storage)'')
-
-        PY
-
-        '
+        python3 ci/verify_kqueue_inputs.py
     - name: decrypt and install the preserved Data seed
       script: "set -euo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/06-seed.txt\"\nexec > >(tee -a \"$L\") 2>&1\nopenssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \\\n  -in \"$WORK/device/seed/data.dbr.enc\"\
         \ -out \"$WORK/data.dbr\" -pass env:SEED_PASSPHRASE\nshasum -a 256 \"$WORK/data.dbr\"\ndest=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime\"\nmkdir -p \"$dest\"\ncp \"$WORK/data.dbr\"\
