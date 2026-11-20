@@ -62,7 +62,7 @@ workflows:
 
         cd "$WORK"
 
-        git clone --depth 1 --branch "$DEVICE_REF" --recurse-submodules --shallow-submodules "https://x-access-token:$GHTOKEN@github.com/yeyingjun-codes/UniXNU-sheng.git" device
+        git clone --depth 1 --branch "$DEVICE_REF" --recurse-submodules --shallow-submodules "https://x-access-token:${GITHUB_TOKEN:-}@github.com/yeyingjun-codes/UniXNU-sheng.git" device
 
         git clone --depth 1 --branch "$UEFI_REF" --recurse-submodules --shallow-submodules "$UEFI_REPO" uefi-sheng
 
