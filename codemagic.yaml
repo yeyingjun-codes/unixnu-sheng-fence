@@ -68,7 +68,7 @@ workflows:
 
         git init -q UniXNU
 
-        git -C UniXNU remote add origin https://github.com/yeyingjun-codes/UniXNU.git
+        git -C UniXNU remote add origin https://github.com/UniXNU/UniXNU.git
 
         git -C UniXNU fetch --depth 1 origin "$UNIXNU_REF"
 
@@ -88,57 +88,6 @@ workflows:
     - name: platform seed sanity
       script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/05-seed-check.txt\"\nexec > >(tee -a \"$L\") 2>&1\nif ! [[ \"${UNIXNU_UNIQUE_CHIP_ID:-}\" =~ ^[0-9a-fA-F]{8}$ ]]; then\n  echo 'Set UNIXNU_UNIQUE_CHIP_ID\
         \ (8 hex digits) in the sheng-secrets variable group.' >&2\n  exit 1\nfi\necho \"platform seed present (8 hex digits)\"\n"
-    - name: pin Adreno740 to the fence-fix revision
-      script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/07-adreno.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\ncd \"$WORK/UniXNU\"\npython3 - <<'PY'\nimport os, pathlib, re\npath = pathlib.Path('components.toml')\n\
-        text = path.read_text()\nblocks = re.split(r'(?=^\\[\\[component\\]\\])', text, flags=re.M)\nhit, out = 0, []\nfor block in blocks:\n    if re.search(r'^id = \"Adreno740\"', block, re.M):\n    \
-        \    block = re.sub(r'^repository = \".*\"', 'repository = \"%s\"' % os.environ['ADRENO740_REPO'], block, count=1, flags=re.M)\n        block = re.sub(r'^revision = \".*\"', 'revision = \"%s\"'\
-        \ % os.environ['ADRENO740_REV'], block, count=1, flags=re.M)\n        hit += 1\n    out.append(block)\nif not hit:\n    raise SystemExit('Adreno740 component not found in components.toml')\npath.write_text(''.join(out))\n\
-        print('Adreno740 ->', os.environ['ADRENO740_REPO'], os.environ['ADRENO740_REV'])\nPY\ngrep -A7 'id = \"Adreno740\"' components.toml | head -10\n# components.toml alone does NOT move the build: the\
-        \ packager compiles\n# drivers/Adreno740 straight out of the checked-out submodule (verified 11-13 18:05:\n# the manifest still recorded 6fa7bae while components.toml said 0b28a0e5). Move the\n\
-        # submodule itself: rewrite .gitmodules, retarget the gitlink, sync, re-checkout.\ngit config -f .gitmodules submodule.drivers/Adreno740.url \"$ADRENO740_REPO\"\ngit add .gitmodules\ngit update-index\
-        \ --cacheinfo \"160000,$ADRENO740_REV,drivers/Adreno740\"\ngit submodule sync --recursive\ngit submodule update --init --depth 1 drivers/Adreno740\nhead=$(git -C drivers/Adreno740 rev-parse HEAD)\n\
-        echo \"drivers/Adreno740 HEAD = $head\"\n[ \"$head\" = \"$ADRENO740_REV\" ] || { echo \"Adreno740 pin did not take: $head\" >&2; exit 1; }\ngit -C drivers/Adreno740 log -1 --format='%H %s'\ngit\
-        \ status --porcelain | head -10\n"
-    - name: fix the upstream mesa patch header
-      script: "# UniXNU@82b847c4 ships patches/mesa/turnip-frame-diagnostics.patch whose first file\n# (\"tu_frame_diagnostic.h\") is a new file but carries no \"new file mode\" line. With -p1\n# git strips\
-        \ \"--- /dev/null\" to \"dev/null\" and aborts with\n#   error: dev/null: No such file or directory\n# (reproduced locally with git 2.55). Nothing else in the build is touched; the rest of\n# the\
-        \ patch and all 81 kernel patches apply cleanly.\nset -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08a-mesa-patch.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\np=\"$WORK/UniXNU/patches/mesa/turnip-frame-diagnostics.patch\"\
-        \n[ -f \"$p\" ] || { echo \"missing $p\"; exit 1; }\nshasum -a 256 \"$p\"\npython3 - \"$p\" <<'PY'\nimport sys, pathlib\npath = pathlib.Path(sys.argv[1])\ntext = path.read_text()\nmarker = 'diff\
-        \ --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\\n--- /dev/null'\npatched = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\\\
-        nnew file mode 100644\\n--- /dev/null'\nif 'new file mode 100644\\n--- /dev/null' in text:\n    print('already carries new file mode; nothing to do')\nelif marker not in text:\n    raise SystemExit('unexpected\
-        \ patch layout; refusing to rewrite')\nelse:\n    path.write_text(text.replace(marker, patched, 1))\n    print('inserted \"new file mode 100644\" for tu_frame_diagnostic.h')\nPY\nshasum -a 256 \"\
-        $p\"\nsed -n '1,6p' \"$p\"\n"
-    - name: install WCN7850 firmware (linux-firmware, pinned)
-      script: "# device/scripts/build-wifi-userspace.py reads firmware/wcn7850/{amss,m3,board-2}.bin.\n# The repo ships only manifest.json (the blobs stay out), so fetch the exact upstream\n# files from\
-        \ linux-firmware at a pinned commit and verify them against the manifest\n# sizes and SHA-256 before the package step runs.\nset -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/07b-wifi-firmware.txt\"\
-        \nexec > >(tee -a \"$L\") 2>&1\nset -e\nREF=286e9e6c952493e36310a054ff2a0327ab8108a7\nBASE=\"https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/ath12k/WCN7850/hw2.0\"\
-        \nDST=\"$WORK/device/firmware/wcn7850\"\nmkdir -p \"$DST\"\nfor f in amss.bin m3.bin board-2.bin; do\n  echo \"== $f\"\n  curl -fsSL --retry 4 --retry-delay 2 -o \"$DST/$f\" \"$BASE/$f?id=$REF\"\
-        \n  ls -l \"$DST/$f\"\ndone\npython3 - \"$DST\" <<'PY'\nimport hashlib, json, pathlib, sys\ndst = pathlib.Path(sys.argv[1])\nmanifest = json.loads((dst / 'manifest.json').read_text())['files']\n\
-        bad = []\nfor name, meta in manifest.items():\n    p = dst / name\n    if not p.is_file():\n        bad.append(name + ': missing')\n        continue\n    data = p.read_bytes()\n    digest = hashlib.sha256(data).hexdigest()\n\
-        \    ok = len(data) == meta['bytes'] and digest == meta['sha256']\n    print(f\"{name:12} {len(data):>9} {digest} {'OK' if ok else 'MISMATCH'}\")\n    if not ok:\n        bad.append(name)\nif bad:\n\
-        \    raise SystemExit('firmware mismatch: ' + ', '.join(bad))\nPY\n"
-    - name: fetch Ath12kWifi locked sources (linux / freebsd / wpa_supplicant)
-      script: "# device/scripts/build-wifi-userspace.py -> drivers/Ath12kWifi/tools/build-supplicant.py\n#   -> prepare-supplicant.py -> fetch-sources.py --check\n# deps/ is not committed (sparse upstream\
-        \ checkouts + a 3 MB tarball), so the check\n# aborts with \"missing source: .../drivers/Ath12kWifi/deps/linux\". Resolve the locked\n# versions here, once, before the package step.\nset -uo pipefail\n\
-        mkdir -p \"$DIAG\"\nL=\"$DIAG/07c-ath12k-sources.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\ncd \"$WORK/device/drivers/Ath12kWifi\"\necho \"== source-lock ==\"\npython3 -c \"import json;d=json.load(open('tools/source-lock.json'));print({k:(v.get('commit')\
-        \ or v.get('sha256')) if isinstance(v,dict) else v for k,v in d.items()})\"\necho \"== materialise deps ==\"\npython3 - <<'PY'\nimport hashlib, json, pathlib, subprocess, tarfile, urllib.request\n\
-        \nroot = pathlib.Path('.').resolve()\nlock = json.loads((root / 'tools/source-lock.json').read_text())\ndeps = root / 'deps'\ndeps.mkdir(exist_ok=True)\n\nfor name in ('linux', 'freebsd'):\n   \
-        \ src = lock[name]\n    d = deps / name\n    if not d.exists():\n        # tools/fetch-sources.py runs `git sparse-checkout add /dir/ ...`, which git rejects\n        # in cone mode: \"specify directories\
-        \ rather than patterns (no leading slash)\".\n        # A plain depth-1 checkout lands on the exact same locked commit, so materialise it\n        # here; then switch that clone to NON-cone sparse\
-        \ checkout seeded with the same\n        # patterns, so the later upstream `sparse-checkout add` call succeeds instead of\n        # aborting the build (build-ath12k-wifi.py calls fetch-sources.sh\
-        \ again).\n        subprocess.run(['git', 'clone', '--depth', '1', '--branch', src['ref'],\n                        src['url'], str(d)], check=True)\n    # A branch head may move after the lock\
-        \ was written; always materialise the exact commit.\n    subprocess.run(['git', '-C', str(d), 'fetch', '--depth', '1', 'origin', src['commit']], check=True)\n    subprocess.run(['git', '-C', str(d),\
-        \ 'checkout', '--detach', src['commit']], check=True)\n    head = subprocess.run(['git', '-C', str(d), 'rev-parse', 'HEAD'],\n                          capture_output=True, text=True, check=True).stdout.strip()\n\
-        \    print(f\"{name}: HEAD {head}\")\n    if head != src['commit']:\n        raise SystemExit(f\"{name}: expected {src['commit']}, found {head}\")\n\n    subprocess.run(['git', '-C', str(d), 'config',\
-        \ 'core.sparseCheckoutCone', 'false'], check=True)\n    subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckout', 'true'], check=True)\n    info = d / '.git/info/sparse-checkout'\n \
-        \   info.parent.mkdir(parents=True, exist_ok=True)\n    info.write_text('\\n'.join(src['paths']) + '\\n')\n    subprocess.run(['git', '-C', str(d), 'read-tree', '-mu', 'HEAD'], check=True)\n   \
-        \ missing = [p for p in src['required'] if not (d / p).is_file()]\n    if missing:\n        raise SystemExit(f\"{name}: sparse checkout dropped required files: {missing[:4]}\")\n    print(f\"{name}:\
-        \ non-cone sparse checkout with {len(src['paths'])} patterns, required files present\")\n\ns = lock['supplicant']\narchive = deps / s['archive']\nif not archive.exists():\n    tmp = archive.with_suffix('.part')\n\
-        \    with urllib.request.urlopen(s['url'], timeout=60) as r, tmp.open('wb') as out:\n        while chunk := r.read(1 << 20):\n            out.write(chunk)\n    tmp.replace(archive)\ndigest = hashlib.sha256(archive.read_bytes()).hexdigest()\n\
-        print(f\"supplicant: {digest}\")\nif digest != s['sha256']:\n    raise SystemExit('supplicant archive hash mismatch')\n\ntarget = deps / s['directory']\nif not target.exists():\n    with tarfile.open(archive)\
-        \ as package:\n        for member in package.getmembers():\n            path = (deps / member.name).resolve()\n            if (not (member.isfile() or member.isdir())\n                    or target.resolve()\
-        \ not in (path, *path.parents)):\n                raise SystemExit(f'unexpected archive member: {member.name}')\n        package.extractall(deps)\nprint('deps ready')\nPY\necho \"== upstream check\
-        \ ==\"\npython3 tools/fetch-sources.py --check\ncat out/source-identity.json\n"
     - name: package
       script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08-package.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\n# $CM_ENV appends were not visible to later steps, so build the PATH here as well.\n\
         # cargo/rustc live in the keg-only rustup prefix; ipsw went to ~/.local/bin.\nRUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH\"\
