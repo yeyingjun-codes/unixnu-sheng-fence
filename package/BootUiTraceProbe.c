@@ -157,7 +157,7 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
    }
    // kevent_id (375): the main thread is parked on a kqueue, not a Mach peer.
    // Resolve which kqueue and what filters its knotes watch (read-only).
-   if(boot_kqueue_wait_describe && e->trap==375 && (sample_state[i]&TH_WAIT)) {
+   if(boot_kqueue_wait_describe && samples[i].trap==375 && (sample_state[i]&TH_WAIT)) {
     kq_draft_count[role]=boot_kqueue_wait_describe(pid,sample_event[i],kq_draft[role],BT_KQ_MAX);
    }
   }
