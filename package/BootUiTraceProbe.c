@@ -79,10 +79,22 @@ char boot_ui_trace_rows[BT_ROWS][120],boot_ui_trace_label[120];
 unsigned boot_ui_trace_ready,boot_ui_trace_groups,boot_ui_trace_threads,boot_ui_trace_pages;
 volatile unsigned boot_ui_trace_phase,boot_ui_trace_index;
 
+// Read-only kqueue-wait resolver (BootKqueueWait.c). A backboardd main thread
+// parked in kevent_id (syscall 375) waits on &kqfile->kqf_count, not a Mach
+// peer, so peer=-1 is expected. This decodes the knotes registered on that
+// kqueue so a stall names the event source (e.g. EVFILT_MACHPORT) it waits on.
+struct boot_kqueue_knote_info {int16_t filter;uint8_t filtid;uint32_t sfflags;uint64_t ident;};
+extern unsigned boot_kqueue_wait_describe(int,uint64_t,struct boot_kqueue_knote_info *,unsigned) __attribute__((weak_import));
+extern const char *boot_kqueue_filter_name(int) __attribute__((weak_import));
+#define BT_KQ_MAX 6
+static struct boot_kqueue_knote_info kq_draft[BT_ROLES][BT_KQ_MAX],kq_published[BT_ROLES][BT_KQ_MAX];
+static unsigned kq_draft_count[BT_ROLES],kq_published_count[BT_ROLES];
+
 void boot_ui_trace_begin(void) {
  memset(draft_main,0,sizeof(draft_main));memset(hot_draft,0,sizeof(hot_draft));memset(trap_draft,0,sizeof(trap_draft));memset(cpu_draft,0,sizeof(cpu_draft));
  memset(&draft,0,sizeof(draft));memset(draft_pid,0,sizeof(draft_pid));
  memset(draft_slide,0,sizeof(draft_slide));memset(draft_names,0,sizeof(draft_names));
+ memset(kq_draft_count,0,sizeof(kq_draft_count));memset(kq_draft,0,sizeof(kq_draft));
  draft_busy=0;draft_omitted=0;boot_ui_trace_phase=1;
 }
 static int read_user(void *context,uint64_t address,void *bytes,unsigned size) {
@@ -142,6 +154,11 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
       (unsigned)(info[0]>>32) && bt_user(info[1],sizeof(image)) &&
       !read_user(map,info[1],image,sizeof(image)) && bt_user(image[0],32)) {
     main->image=image[0];main->image_error=0;
+   }
+   // kevent_id (375): the main thread is parked on a kqueue, not a Mach peer.
+   // Resolve which kqueue and what filters its knotes watch (read-only).
+   if(boot_kqueue_wait_describe && e->trap==375 && (sample_state[i]&TH_WAIT)) {
+    kq_draft_count[role]=boot_kqueue_wait_describe(pid,sample_event[i],kq_draft[role],BT_KQ_MAX);
    }
   }
   if(!samples[i].error)bt_walk(&samples[i],read_user,map);
@@ -213,6 +230,7 @@ void boot_ui_trace_publish(void) {
  if(!__atomic_exchange_n(&trace_lock,1,__ATOMIC_ACQUIRE)) {
   published=draft;memcpy(published_main,draft_main,sizeof(draft_main));memcpy(hot_published,hot_draft,sizeof(hot_draft));memcpy(trap_published,trap_draft,sizeof(trap_draft));memcpy(cpu_published,cpu_draft,sizeof(cpu_draft));memcpy(published_pid,draft_pid,sizeof(draft_pid));
   memcpy(published_slide,draft_slide,sizeof(draft_slide));memcpy(published_names,draft_names,sizeof(draft_names));
+  memcpy(kq_published,kq_draft,sizeof(kq_draft));memcpy(kq_published_count,kq_draft_count,sizeof(kq_draft_count));
   published_busy=draft_busy;published_omitted=draft_omitted;
   __atomic_store_n(&trace_lock,0,__ATOMIC_RELEASE);
  }
@@ -231,6 +249,17 @@ unsigned boot_ui_trace_role_rows(unsigned role,char rows[][120],unsigned max,uns
    e->peer,e->peer_code);
   snprintf(rows[n++],120,"STK%c trap=%lld x0=%llx x1=%llx x2=%llx x3=%llx x4=%llx",c,(long long)e->trap,e->regs[0],e->regs[1],e->regs[2],
    e->regs[3],e->regs[4]);
+  // The kqueue this main thread is parked on (kevent_id): name each knote's
+  // filter so the stall points at its real event source, not just "kevent".
+  if(e->trap==375 && kq_published_count[role] && boot_kqueue_filter_name) {
+   snprintf(rows[n++],120,"KQ%c waits: %u knotes",c,kq_published_count[role]);
+   for(unsigned k=0;k<kq_published_count[role] && k<BT_KQ_MAX && n<max;++k) {
+    snprintf(rows[n++],120,"KQ%c %s fflags=%x ident=%llx",c,boot_kqueue_filter_name(kq_published[role][k].filter),
+     kq_published[role][k].sfflags,kq_published[role][k].ident);
+   }
+  } else if(e->trap==375) {
+   snprintf(rows[n++],120,"KQ%c waits: no kqueue matched (or not TH_WAIT)",c);
+  }
   for(unsigned row=0;row<3;++row) {
    int at=snprintf(rows[n],120,"STK%c %02u",c,row*8+1);
    for(unsigned i=0;i<8 && at>0 && at<119;++i)at+=snprintf(rows[n]+at,120-at," %llx",m->frames[row*8+i]);
