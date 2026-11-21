@@ -147,7 +147,7 @@ workflows:
 
         mkdir -p "$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree/kits/Sm8550Platform"
 
-        cp "$WORK/device/package/Sm8550GeniUart.h" "$WORK/device/package/Sm8550GeniUart.c" "$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree/kits/Sm8550Platform/"
+        cp "$WORK/device/package/Sm8550GeniUart.h" "$WORK/device/package/Sm8550GeniUart.c" "$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree/kits/sheng/"
 
         scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data
 
