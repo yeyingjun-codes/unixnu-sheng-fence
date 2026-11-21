@@ -123,7 +123,7 @@ workflows:
 
         cd "$WORK/device"
 
-        scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data
+        scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data --no-deps
 
         '
     - name: collect outputs
