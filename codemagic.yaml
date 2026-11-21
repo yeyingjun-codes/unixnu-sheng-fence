@@ -11,7 +11,7 @@ workflows:
         DIAG: $CM_BUILD_DIR/out/diag
         UNIXNU_REF: 82b847c4ac3f68a57024b3082ffa3a03442defd9
         DEVICE_REPO: yeyingjun-codes/UniXNU-sheng
-        DEVICE_REF: 27-packaged-official
+        DEVICE_REF: 27-boot-progress
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
         UEFI_REF: sheng
         ADRENO740_REPO: https://github.com/yeyingjun-codes/adreno740-fence.git
@@ -63,8 +63,6 @@ workflows:
         cd "$WORK"
 
         git clone --depth 1 --branch "$DEVICE_REF" --recurse-submodules --shallow-submodules "https://x-access-token:${GITHUB_TOKEN:-}@github.com/yeyingjun-codes/UniXNU-sheng.git" device
-
-        git -C device fetch --depth 1 origin 4824d3fae69042e86743cd11a71e60a25522d8a0 && git -C device checkout 4824d3fae69042e86743cd11a71e60a25522d8a0
 
         git clone --depth 1 --branch "$UEFI_REF" --recurse-submodules --shallow-submodules "$UEFI_REPO" uefi-sheng
 
