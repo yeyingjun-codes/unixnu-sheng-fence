@@ -1,6 +1,6 @@
 workflows:
   sheng-official-baseline:
-    name: sheng kqueue wait resolver (probe17 + v10 role trace)
+    name: sheng-ios17-i568-baseline
     instance_type: mac_mini_m2
     max_build_duration: 120
     environment:
@@ -11,7 +11,7 @@ workflows:
         DIAG: $CM_BUILD_DIR/out/diag
         UNIXNU_REF: 23202419ecd7f0b54b956809b322eb2d331af3ab
         DEVICE_REPO: yeyingjun-codes/UniXNU-sheng
-        DEVICE_REF: official-main
+        DEVICE_REF: i568-official
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
         UEFI_REF: sheng
         ADRENO740_REPO: https://github.com/yeyingjun-codes/adreno740-fence.git
@@ -126,10 +126,10 @@ workflows:
         \ -v cargo >/dev/null || { echo 'cargo still missing; aborting before a 40-minute build' >&2; exit 1; }\ncd \"$WORK/device\"\n# BaseTools is built by package/build.sh with `make -j$(nproc) >/dev/null`;\
         \ on this EDK2\n# feed (mu_basecore cfb93724) the parallel host-tools build can lose the VfrCompile link\n# race and abort with a message that is swallowed by that >/dev/null. The same commit\n\
         # builds cleanly serially (probe run 11-13 16:0x). Keep the default parallelism for the\n# main build, but if package fails, finish BaseTools serially and retry once.\nexport JOBS=\"${JOBS:-4}\"\
-        \nset +e\nscripts/package.sh --os 27 --uefi ../uefi-sheng --init-data\nrc=$?\nif [ $rc -ne 0 ]; then\n  echo \"== package.sh failed rc=$rc; repairing BaseTools serially\"\n  for d in \"$WORK\"/UniXNU/out/feeds/mu_basecore-*/BaseTools/Source/C;\
+        \nset +e\nscripts/package.sh --os 17 --uefi ../uefi-sheng\nrc=$?\nif [ $rc -ne 0 ]; then\n  echo \"== package.sh failed rc=$rc; repairing BaseTools serially\"\n  for d in \"$WORK\"/UniXNU/out/feeds/mu_basecore-*/BaseTools/Source/C;\
         \ do\n    [ -d \"$d\" ] || continue\n    echo \"== serial make -C $d -j1\"\n    make -C \"$d\" -j1 >> \"$DIAG/08b-basetools.txt\" 2>&1\n    echo \"serial make rc=$? GenFw=$([ -x \"$d/bin/GenFw\"\
         \ ] && echo yes || echo no)\"\n  done\n  R=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n  for f in \"$R/logs/package.log\" \"$R/logs/runtime.log\"; do\n    [ -f \"$f\" ] && tail\
-        \ -200 \"$f\" > \"$DIAG/08c-$(basename \"$f\").txt\"\n  done\n  echo \"== retry package.sh once\"\n  scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data\n  rc=$?\nfi\nexit $rc\n"
+        \ -200 \"$f\" > \"$DIAG/08c-$(basename \"$f\").txt\"\n  done\n  echo \"== retry package.sh once\"\n  scripts/package.sh --os 17 --uefi ../uefi-sheng\n  rc=$?\nfi\nexit $rc\n"
     - name: collect outputs
       script: "set -uo pipefail\nmkdir -p \"$DIAG\" \"$CM_BUILD_DIR/out\"\nL=\"$DIAG/09-outputs.txt\"\nexec > >(tee -a \"$L\") 2>&1\nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n\
         echo \"== tree under $root ==\"\nfind \"$root\" -maxdepth 2 -type f \\( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json' \\) -print -exec ls -l {} \\; 2>/dev/null\
