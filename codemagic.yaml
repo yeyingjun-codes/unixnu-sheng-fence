@@ -62,7 +62,15 @@ workflows:
 
         cd "$WORK"
 
-        git clone --depth 1 --branch "$DEVICE_REF" --recurse-submodules --shallow-submodules "https://x-access-token:${GITHUB_TOKEN:-}@github.com/yeyingjun-codes/UniXNU-sheng.git" device
+        git clone --depth 1 --branch main --recurse-submodules --shallow-submodules "https://x-access-token:${GITHUB_TOKEN:-}@github.com/yeyingjun-codes/UniXNU-sheng.git" device
+
+        git -C device fetch --depth 1 origin c8f92b208068eeaa4cd2b0f592671f04ee70076e
+
+        git -C device checkout --detach c8f92b208068eeaa4cd2b0f592671f04ee70076e
+
+        git -C device submodule sync --recursive
+
+        git -C device submodule update --init --recursive --depth 1
 
         git clone --depth 1 --branch "$UEFI_REF" --recurse-submodules --shallow-submodules "$UEFI_REPO" uefi-sheng
 
@@ -82,7 +90,9 @@ workflows:
 
         echo "uniXNU   $(git -C UniXNU rev-parse HEAD)"
 
-        ls -1 "$WORK"'
+        ls -1 "$WORK"
+
+        '
     - name: platform seed sanity
       script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/05-seed-check.txt\"\nexec > >(tee -a \"$L\") 2>&1\nif ! [[ \"${UNIXNU_UNIQUE_CHIP_ID:-}\" =~ ^[0-9a-fA-F]{8}$ ]]; then\n  echo 'Set UNIXNU_UNIQUE_CHIP_ID\
         \ (8 hex digits) in the sheng-secrets variable group.' >&2\n  exit 1\nfi\necho \"platform seed present (8 hex digits)\"\n"
