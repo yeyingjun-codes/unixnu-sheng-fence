@@ -98,16 +98,15 @@ workflows:
         \ patch layout; refusing to rewrite')\nelse:\n    path.write_text(text.replace(marker, patched, 1))\n    print('inserted \"new file mode 100644\" for tu_frame_diagnostic.h')\nPY\nshasum -a 256 \"\
         $p\"\nsed -n '1,6p' \"$p\"\n"
     - name: package
-      script: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08-package.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\n# $CM_ENV appends were not visible to later steps, so build the PATH here as well.\n\
-        # cargo/rustc live in the keg-only rustup prefix; ipsw went to ~/.local/bin.\nRUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH\"\
-        \necho \"PATH=$PATH\"\necho \"cargo -> $(command -v cargo || echo MISSING)\"\necho \"rustc -> $(command -v rustc || echo MISSING)\"\necho \"ipsw  -> $(command -v ipsw || echo MISSING)\"\ncommand\
-        \ -v cargo >/dev/null || { echo 'cargo still missing; aborting before a 40-minute build' >&2; exit 1; }\ncd \"$WORK/device\"\n# BaseTools is built by package/build.sh with `make -j$(nproc) >/dev/null`;\
-        \ on this EDK2\n# feed (mu_basecore cfb93724) the parallel host-tools build can lose the VfrCompile link\n# race and abort with a message that is swallowed by that >/dev/null. The same commit\n\
-        # builds cleanly serially (probe run 11-13 16:0x). Keep the default parallelism for the\n# main build, but if package fails, finish BaseTools serially and retry once.\nexport JOBS=\"${JOBS:-4}\"\
-        \nset +e\nscripts/package.sh --os 17 --uefi ../uefi-sheng\nrc=$?\nif [ $rc -ne 0 ]; then\n  echo \"== package.sh failed rc=$rc; repairing BaseTools serially\"\n  for d in \"$WORK\"/UniXNU/out/feeds/mu_basecore-*/BaseTools/Source/C;\
-        \ do\n    [ -d \"$d\" ] || continue\n    echo \"== serial make -C $d -j1\"\n    make -C \"$d\" -j1 >> \"$DIAG/08b-basetools.txt\" 2>&1\n    echo \"serial make rc=$? GenFw=$([ -x \"$d/bin/GenFw\"\
-        \ ] && echo yes || echo no)\"\n  done\n  R=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n  for f in \"$R/logs/package.log\" \"$R/logs/runtime.log\"; do\n    [ -f \"$f\" ] && tail\
-        \ -200 \"$f\" > \"$DIAG/08c-$(basename \"$f\").txt\"\n  done\n  echo \"== retry package.sh once\"\n  scripts/package.sh --os 17 --uefi ../uefi-sheng\n  rc=$?\nfi\nexit $rc\n"
+      script: "set -euo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08-package.txt\"\nexec > >(tee -a \"$L\") 2>&1\nRUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH\"\
+        \ncommand -v cargo >/dev/null\nexport JOBS=\"${JOBS:-4}\"\nexport UNIXNU_UNIQUE_CHIP_ID\ncd \"$WORK/UniXNU\"\n./unixnu defconfig sheng_defconfig -D \"$WORK/device\"\n./unixnu fetch -D \"$WORK/device\"\
+        \n./unixnu status -D \"$WORK/device\" --json\n./unixnu ipsw fetch -D \"$WORK/device\"\n./unixnu build kernel -D \"$WORK/device\"\n./unixnu build package -D \"$WORK/device\"\n./unixnu build firmware\
+        \ -D \"$WORK/device\" --uefi \"$WORK/uefi-sheng\"\npython3 - <<'PY'\nimport glob, os, pathlib, plistlib, subprocess\nroot = pathlib.Path('/tmp/sheng-ios17-seed')\nroot.mkdir(exist_ok=True)\nosimg\
+        \ = next((p for p in glob.glob('/Users/builder/clone/work/UniXNU/out/ipsw/21H461/*.dmg') if pathlib.Path(p).stat().st_size > 1024*1024*1024), None)\nassert osimg, 'no OS image found after ipsw fetch'\n\
+        mount = root / 'mount'\nmount.mkdir(exist_ok=True)\nattached = plistlib.loads(subprocess.check_output(['hdiutil','attach','-readonly','-nobrowse','-mountpoint',str(mount),'-plist',osimg]))\ndev\
+        \ = attached['system-entities'][0]['dev-entry']\nprint('OS image', osimg, 'mounted', dev, flush=True)\ntry:\n    subprocess.run(['python3','scripts/make-data-seed.py',str(mount),'/tmp/sheng-ios17-data.dbr','--gib','8','--build','21H461','--skip-setup'],\
+        \ check=True)\nfinally:\n    subprocess.run(['hdiutil','detach',dev], check=True)\nPY\n./unixnu build payload -D \"$WORK/device\" --unique-chip-id \"$UNIXNU_UNIQUE_CHIP_ID\" --data-ramdisk /tmp/sheng-ios17-data.dbr\
+        \ --skip-setup\n./unixnu bootimg -D \"$WORK/device\" --uefi \"$WORK/uefi-sheng\"\n"
     - name: collect outputs
       script: "set -uo pipefail\nmkdir -p \"$DIAG\" \"$CM_BUILD_DIR/out\"\nL=\"$DIAG/09-outputs.txt\"\nexec > >(tee -a \"$L\") 2>&1\nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n\
         echo \"== tree under $root ==\"\nfind \"$root\" -maxdepth 2 -type f \\( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json' \\) -print -exec ls -l {} \\; 2>/dev/null\
