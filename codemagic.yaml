@@ -64,8 +64,6 @@ workflows:
 
         git clone --depth 1 --branch "$DEVICE_REF" --recurse-submodules --shallow-submodules "https://x-access-token:${GITHUB_TOKEN:-}@github.com/yeyingjun-codes/UniXNU-sheng.git" device
 
-        git -C device fetch --depth 1 origin 679908d22cee24d15adfb1fceed9a8bf4e0d36ea && git -C device checkout 679908d22cee24d15adfb1fceed9a8bf4e0d36ea
-
         git clone --depth 1 --branch "$UEFI_REF" --recurse-submodules --shallow-submodules "$UEFI_REPO" uefi-sheng
 
         git init -q UniXNU
