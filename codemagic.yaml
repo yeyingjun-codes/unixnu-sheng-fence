@@ -1,6 +1,6 @@
 workflows:
   sheng-official-baseline:
-    name: sheng-27-packaged-baseline
+    name: sheng-pr65-desktop
     instance_type: mac_mini_m2
     max_build_duration: 120
     environment:
@@ -11,7 +11,7 @@ workflows:
         DIAG: $CM_BUILD_DIR/out/diag
         UNIXNU_REF: 82b847c4ac3f68a57024b3082ffa3a03442defd9
         DEVICE_REPO: yeyingjun-codes/UniXNU-sheng
-        DEVICE_REF: 27-boot-progress
+        DEVICE_REF: pr65-desktop
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
         UEFI_REF: sheng
         ADRENO740_REPO: https://github.com/yeyingjun-codes/adreno740-fence.git
@@ -63,6 +63,8 @@ workflows:
         cd "$WORK"
 
         git clone --depth 1 --branch "$DEVICE_REF" --recurse-submodules --shallow-submodules "https://x-access-token:${GITHUB_TOKEN:-}@github.com/yeyingjun-codes/UniXNU-sheng.git" device
+
+        git -C device fetch --depth 1 origin 679908d22cee24d15adfb1fceed9a8bf4e0d36ea && git -C device checkout 679908d22cee24d15adfb1fceed9a8bf4e0d36ea
 
         git clone --depth 1 --branch "$UEFI_REF" --recurse-submodules --shallow-submodules "$UEFI_REPO" uefi-sheng
 
