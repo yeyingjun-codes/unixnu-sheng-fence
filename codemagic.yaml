@@ -104,6 +104,29 @@ workflows:
         bad = []\nfor name, meta in manifest.items():\n    p = dst / name\n    if not p.is_file():\n        bad.append(name + ': missing')\n        continue\n    data = p.read_bytes()\n    digest = hashlib.sha256(data).hexdigest()\n\
         \    ok = len(data) == meta['bytes'] and digest == meta['sha256']\n    print(f\"{name:12} {len(data):>9} {digest} {'OK' if ok else 'MISMATCH'}\")\n    if not ok:\n        bad.append(name)\nif bad:\n\
         \    raise SystemExit('firmware mismatch: ' + ', '.join(bad))\nPY\n"
+    - name: fetch Ath12kWifi locked sources (linux / freebsd / wpa_supplicant)
+      script: "cd \"$WORK/UniXNU\"\n./unixnu defconfig sheng_ipados27_defconfig -D \"$WORK/device\"\n./unixnu fetch -D \"$WORK/device\"\n# device/scripts/build-wifi-userspace.py -> drivers/Ath12kWifi/tools/build-supplicant.py\n\
+        #   -> prepare-supplicant.py -> fetch-sources.py --check\n# deps/ is not committed (sparse upstream checkouts + a 3 MB tarball), so the check\n# aborts with \"missing source: .../drivers/Ath12kWifi/deps/linux\"\
+        . Resolve the locked\n# versions here, once, before the package step.\nset -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/07c-ath12k-sources.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\ncd \"$WORK/device/drivers/Ath12kWifi\"\
+        \necho \"== source-lock ==\"\npython3 -c \"import json;d=json.load(open('tools/source-lock.json'));print({k:(v.get('commit') or v.get('sha256')) if isinstance(v,dict) else v for k,v in d.items()})\"\
+        \necho \"== materialise deps ==\"\npython3 - <<'PY'\nimport hashlib, json, pathlib, subprocess, tarfile, urllib.request\n\nroot = pathlib.Path('.').resolve()\nlock = json.loads((root / 'tools/source-lock.json').read_text())\n\
+        deps = root / 'deps'\ndeps.mkdir(exist_ok=True)\n\nfor name in ('linux', 'freebsd'):\n    src = lock[name]\n    d = deps / name\n    if not d.exists():\n        # tools/fetch-sources.py runs `git\
+        \ sparse-checkout add /dir/ ...`, which git rejects\n        # in cone mode: \"specify directories rather than patterns (no leading slash)\".\n        # A plain depth-1 checkout lands on the exact\
+        \ same locked commit, so materialise it\n        # here; then switch that clone to NON-cone sparse checkout seeded with the same\n        # patterns, so the later upstream `sparse-checkout add`\
+        \ call succeeds instead of\n        # aborting the build (build-ath12k-wifi.py calls fetch-sources.sh again).\n        subprocess.run(['git', 'clone', '--depth', '1', '--branch', src['ref'],\n \
+        \                       src['url'], str(d)], check=True)\n    # A branch head may move after the lock was written; always materialise the exact commit.\n    subprocess.run(['git', '-C', str(d),\
+        \ 'fetch', '--depth', '1', 'origin', src['commit']], check=True)\n    subprocess.run(['git', '-C', str(d), 'checkout', '--detach', src['commit']], check=True)\n    head = subprocess.run(['git',\
+        \ '-C', str(d), 'rev-parse', 'HEAD'],\n                          capture_output=True, text=True, check=True).stdout.strip()\n    print(f\"{name}: HEAD {head}\")\n    if head != src['commit']:\n\
+        \        raise SystemExit(f\"{name}: expected {src['commit']}, found {head}\")\n\n    subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckoutCone', 'false'], check=True)\n    subprocess.run(['git',\
+        \ '-C', str(d), 'config', 'core.sparseCheckout', 'true'], check=True)\n    info = d / '.git/info/sparse-checkout'\n    info.parent.mkdir(parents=True, exist_ok=True)\n    info.write_text('\\n'.join(src['paths'])\
+        \ + '\\n')\n    subprocess.run(['git', '-C', str(d), 'read-tree', '-mu', 'HEAD'], check=True)\n    missing = [p for p in src['required'] if not (d / p).is_file()]\n    if missing:\n        raise\
+        \ SystemExit(f\"{name}: sparse checkout dropped required files: {missing[:4]}\")\n    print(f\"{name}: non-cone sparse checkout with {len(src['paths'])} patterns, required files present\")\n\ns\
+        \ = lock['supplicant']\narchive = deps / s['archive']\nif not archive.exists():\n    tmp = archive.with_suffix('.part')\n    with urllib.request.urlopen(s['url'], timeout=60) as r, tmp.open('wb')\
+        \ as out:\n        while chunk := r.read(1 << 20):\n            out.write(chunk)\n    tmp.replace(archive)\ndigest = hashlib.sha256(archive.read_bytes()).hexdigest()\nprint(f\"supplicant: {digest}\"\
+        )\nif digest != s['sha256']:\n    raise SystemExit('supplicant archive hash mismatch')\n\ntarget = deps / s['directory']\nif not target.exists():\n    with tarfile.open(archive) as package:\n  \
+        \      for member in package.getmembers():\n            path = (deps / member.name).resolve()\n            if (not (member.isfile() or member.isdir())\n                    or target.resolve() not\
+        \ in (path, *path.parents)):\n                raise SystemExit(f'unexpected archive member: {member.name}')\n        package.extractall(deps)\nprint('deps ready')\nPY\necho \"== upstream check ==\"\
+        \npython3 tools/fetch-sources.py --check\ncat out/source-identity.json\n"
     - name: package
       script: 'set -euo pipefail
 
