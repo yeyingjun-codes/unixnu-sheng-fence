@@ -97,6 +97,15 @@ workflows:
         nnew file mode 100644\\n--- /dev/null'\nif 'new file mode 100644\\n--- /dev/null' in text:\n    print('already carries new file mode; nothing to do')\nelif marker not in text:\n    raise SystemExit('unexpected\
         \ patch layout; refusing to rewrite')\nelse:\n    path.write_text(text.replace(marker, patched, 1))\n    print('inserted \"new file mode 100644\" for tu_frame_diagnostic.h')\nPY\nshasum -a 256 \"\
         $p\"\nsed -n '1,6p' \"$p\"\n"
+    - name: install WCN7850 firmware (linux-firmware, pinned)
+      script: "# device/scripts/build-wifi-userspace.py reads firmware/wcn7850/{amss,m3,board-2}.bin.\n# The repo ships only manifest.json (the blobs stay out), so fetch the exact upstream\n# files from\
+        \ linux-firmware at a pinned commit and verify them against the manifest\n# sizes and SHA-256 before the package step runs.\nset -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/07b-wifi-firmware.txt\"\
+        \nexec > >(tee -a \"$L\") 2>&1\nset -e\nREF=286e9e6c952493e36310a054ff2a0327ab8108a7\nBASE=\"https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/ath12k/WCN7850/hw2.0\"\
+        \nDST=\"$WORK/device/firmware/wcn7850\"\nmkdir -p \"$DST\"\nfor f in amss.bin m3.bin board-2.bin; do\n  echo \"== $f\"\n  curl -fsSL --retry 4 --retry-delay 2 -o \"$DST/$f\" \"$BASE/$f?id=$REF\"\
+        \n  ls -l \"$DST/$f\"\ndone\npython3 - \"$DST\" <<'PY'\nimport hashlib, json, pathlib, sys\ndst = pathlib.Path(sys.argv[1])\nmanifest = json.loads((dst / 'manifest.json').read_text())['files']\n\
+        bad = []\nfor name, meta in manifest.items():\n    p = dst / name\n    if not p.is_file():\n        bad.append(name + ': missing')\n        continue\n    data = p.read_bytes()\n    digest = hashlib.sha256(data).hexdigest()\n\
+        \    ok = len(data) == meta['bytes'] and digest == meta['sha256']\n    print(f\"{name:12} {len(data):>9} {digest} {'OK' if ok else 'MISMATCH'}\")\n    if not ok:\n        bad.append(name)\nif bad:\n\
+        \    raise SystemExit('firmware mismatch: ' + ', '.join(bad))\nPY\n"
     - name: package
       script: 'set -euo pipefail
 
