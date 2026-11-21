@@ -62,15 +62,11 @@ workflows:
 
         cd "$WORK"
 
-        # device: init + fetch the exact main SHA + checkout FETCH_HEAD, then submodules
-
-        # (the fork''s default main carries stale probe files that block a branch-switch checkout)
-
         git init -q device
 
         git -C device remote add origin "https://x-access-token:${GITHUB_TOKEN:-}@github.com/yeyingjun-codes/UniXNU-sheng.git"
 
-        git -C device fetch --depth 1 origin c8f92b208068eeaa4cd2b0f592671f04ee70076e
+        git -C device fetch --depth 1 origin main-27-build
 
         git -C device checkout -q --detach FETCH_HEAD
 
