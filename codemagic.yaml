@@ -1,6 +1,6 @@
 workflows:
   sheng-official-baseline:
-    name: sheng-27-appsync
+    name: sheng-27-main
     instance_type: mac_mini_m2
     max_build_duration: 120
     environment:
@@ -11,7 +11,7 @@ workflows:
         DIAG: $CM_BUILD_DIR/out/diag
         UNIXNU_REF: 82b847c4ac3f68a57024b3082ffa3a03442defd9
         DEVICE_REPO: yeyingjun-codes/UniXNU-sheng
-        DEVICE_REF: 27-boot-progress
+        DEVICE_REF: c8f92b208068eeaa4cd2b0f592671f04ee70076e
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
         UEFI_REF: sheng
         ADRENO740_REPO: https://github.com/yeyingjun-codes/adreno740-fence.git
