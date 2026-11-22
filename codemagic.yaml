@@ -21,6 +21,8 @@ workflows:
       xcode: latest
     artifacts:
     - out/diag/*.txt
+    - out/diag/09-fileset-log.txt
+    - out/diag/09-lto-all.txt
     - out/diag/log-*.txt
     - out/boot.img
     - out/payload.img
@@ -154,7 +156,9 @@ workflows:
         \ into gop-legacy-display-27')\nelse:\n    raise SystemExit('expected flag anchor not found in build-gop-legacy-display-27.py')\nPY\n\n# keyboard MCU firmware (nanosic/MCU_Upgrade.bin) needed by\
         \ build-gop-legacy-display-27\necho \"== keyboard firmware ==\"\ncd \"$WORK/device\"\npython3 scripts/extract-files.py --section Keyboard\nls -l .cache/firmware/nanosic/MCU_Upgrade.bin\n\nif ! scripts/package.sh\
         \ --os 27 --uefi ../uefi-sheng --init-data; then\n  root=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\" \"$DIAG/log-$(basename\
-        \ \"$f\")\" || true; done\n  tail -c 50000 \"$root\"/build/xnu/fileset-reference/lto-*/lto-build.log > \"$DIAG/09-lto-tail.txt\" 2>/dev/null || true\n  exit 1\nfi\n"
+        \ \"$f\")\" || true; done\n  tail -c 200000 \"$root\"/build/xnu/fileset-reference/lto-*/lto-build.log > \"$DIAG/09-lto-tail.txt\" 2>/dev/null || true\n  # glob may have failed because the log lives\
+        \ elsewhere; grab every lto-build.log on disk\n  find \"$root/build\" -name 'lto-build.log' -size +0c -exec tail -c 200000 {} \\; > \"$DIAG/09-lto-all.txt\" 2>/dev/null || true\n  # and the archive\
+        \ log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\" \"$DIAG/09-fileset-log.txt\" 2>/dev/null || true\n  exit 1\nfi\n"
     - name: collect outputs
       script: "set -uo pipefail\nmkdir -p \"$DIAG\" \"$CM_BUILD_DIR/out\"\nL=\"$DIAG/09-outputs.txt\"\nexec > >(tee -a \"$L\") 2>&1\nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n\
         echo \"== tree under $root ==\"\nfind \"$root\" -maxdepth 2 -type f \\( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json' \\) -print -exec ls -l {} \\; 2>/dev/null\
