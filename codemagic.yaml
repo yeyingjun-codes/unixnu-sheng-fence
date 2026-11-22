@@ -150,7 +150,9 @@ workflows:
         # Inject -Wno-unused-function/-Wno-unused-variable into that script's compile_cpp\n# flags so iOS builds don't trip over macOS-only leftovers. No logic change.\npython3 - \"$WORK/device/scripts/build-gop-legacy-display-27.py\"\
         \ <<'PY'\nimport pathlib, sys\np = pathlib.Path(sys.argv[1])\nt = p.read_text()\nold = \"'-Wno-unnecessary-virtual-specifier'\"\nnew = \"'-Wno-unnecessary-virtual-specifier', '-Wno-unused-function',\
         \ '-Wno-unused-variable'\"\nif new in t:\n    print('gop-legacy-display flags already patched')\nelif old in t:\n    p.write_text(t.replace(old, new, 1))\n    print('injected -Wno-unused-function/-Wno-unused-variable\
-        \ into gop-legacy-display-27')\nelse:\n    raise SystemExit('expected flag anchor not found in build-gop-legacy-display-27.py')\nPY\n\nscripts/package.sh --os 27 --uefi ../uefi-sheng --init-data\n"
+        \ into gop-legacy-display-27')\nelse:\n    raise SystemExit('expected flag anchor not found in build-gop-legacy-display-27.py')\nPY\n\n# keyboard MCU firmware (nanosic/MCU_Upgrade.bin) needed by\
+        \ build-gop-legacy-display-27\necho \"== keyboard firmware ==\"\ncd \"$WORK/device\"\npython3 scripts/extract-files.py --section Keyboard\nls -l .cache/firmware/nanosic/MCU_Upgrade.bin\n\nscripts/package.sh\
+        \ --os 27 --uefi ../uefi-sheng --init-data\n"
     - name: collect outputs
       script: "set -uo pipefail\nmkdir -p \"$DIAG\" \"$CM_BUILD_DIR/out\"\nL=\"$DIAG/09-outputs.txt\"\nexec > >(tee -a \"$L\") 2>&1\nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n\
         echo \"== tree under $root ==\"\nfind \"$root\" -maxdepth 2 -type f \\( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json' \\) -print -exec ls -l {} \\; 2>/dev/null\
