@@ -147,7 +147,7 @@ workflows:
         old = 'static const char kClamshellLog[] KEYBOARD_CONST ='\nnew = 'static const char kClamshellLog[] __attribute__((unused)) KEYBOARD_CONST ='\nif new in t:\n    print('kClamshellLog already marked\
         \ unused')\nelif old in t:\n    p.write_text(t.replace(old, new, 1))\n    print('marked kClamshellLog unused for iOS -Werror build')\nelse:\n    raise SystemExit('kClamshellLog declaration not found;\
         \ upstream changed, re-inspect')\nPY\n\n# gop-legacy-display-27 compiles board kits (KeyboardProbe, ShengSleep, ...) with\n# -Werror but several helpers are only used inside #if defined(XNU_TARGET_OS_OSX).\n\
-        # Inject -Wno-unused-function/-Wno-unused-variable into that script's compile_cpp\n# flags so iOS builds don't trip over macOS-only leftovers. No logic change.\npython3 - \"$WORK/UniXNU/scripts/build-gop-legacy-display-27.py\"\
+        # Inject -Wno-unused-function/-Wno-unused-variable into that script's compile_cpp\n# flags so iOS builds don't trip over macOS-only leftovers. No logic change.\npython3 - \"$WORK/device/scripts/build-gop-legacy-display-27.py\"\
         \ <<'PY'\nimport pathlib, sys\np = pathlib.Path(sys.argv[1])\nt = p.read_text()\nold = \"'-Wno-unnecessary-virtual-specifier'\"\nnew = \"'-Wno-unnecessary-virtual-specifier', '-Wno-unused-function',\
         \ '-Wno-unused-variable'\"\nif new in t:\n    print('gop-legacy-display flags already patched')\nelif old in t:\n    p.write_text(t.replace(old, new, 1))\n    print('injected -Wno-unused-function/-Wno-unused-variable\
         \ into gop-legacy-display-27')\nelse:\n    raise SystemExit('expected flag anchor not found in build-gop-legacy-display-27.py')\nPY\n\nscripts/package.sh --os 27 --uefi ../uefi-sheng --init-data\n"
