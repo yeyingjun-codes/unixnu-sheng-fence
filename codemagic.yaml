@@ -138,9 +138,11 @@ workflows:
         \ ==\"\npython3 tools/fetch-sources.py --check\ncat out/source-identity.json\n"
     - name: package
       script: "set -euo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08-package.txt\"\nexec > >(tee -a \"$L\") 2>&1\nRUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH\"\
-        \ncommand -v cargo >/dev/null\nexport JOBS=\"${JOBS:-4}\"\ncd \"$WORK/device\"\n# ensure the OS profile that build-sheng-source-drivers.py reads is present in the tree\nTREE=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree\"\
-        \nif [ ! -f \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\" ]; then\n  mkdir -p \"$TREE/profiles/os/ipados-27.0.1-24A446\"\n  cp \"$WORK/UniXNU/profiles/os/ipados-27.0.1-24A446/profile.toml\"\
-        \ \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\"\nfi\nls -l \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\"\nscripts/package.sh --os 27 --uefi ../uefi-sheng --init-data\n"
+        \ncommand -v cargo >/dev/null\nexport JOBS=\"${JOBS:-4}\"\ncd \"$WORK/device\"\nTREE=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree\"\n# ensure OS profile is present\nif [ ! -f\
+        \ \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\" ]; then\n  mkdir -p \"$TREE/profiles/os/ipados-27.0.1-24A446\"\n  cp \"$WORK/UniXNU/profiles/os/ipados-27.0.1-24A446/profile.toml\" \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\"\
+        \nfi\n# ensure QcomGeniSpi headers are reachable for TouchProbe.cpp\nif [ ! -f \"$TREE/drivers/QcomGeniSpi/GeniSpi.h\" ]; then\n  mkdir -p \"$TREE/drivers/QcomGeniSpi\"\n  cp \"$WORK/UniXNU/drivers/QcomGeniSpi/GeniSpi.h\"\
+        \ \"$TREE/drivers/QcomGeniSpi/GeniSpi.h\"\nfi\nls -l \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\" \"$TREE/drivers/QcomGeniSpi/GeniSpi.h\"\nscripts/package.sh --os 27 --uefi ../uefi-sheng\
+        \ --init-data\n"
     - name: collect outputs
       script: "set -uo pipefail\nmkdir -p \"$DIAG\" \"$CM_BUILD_DIR/out\"\nL=\"$DIAG/09-outputs.txt\"\nexec > >(tee -a \"$L\") 2>&1\nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n\
         echo \"== tree under $root ==\"\nfind \"$root\" -maxdepth 2 -type f \\( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json' \\) -print -exec ls -l {} \\; 2>/dev/null\
