@@ -9,7 +9,7 @@ workflows:
       vars:
         WORK: $CM_BUILD_DIR/work
         DIAG: $CM_BUILD_DIR/out/diag
-        UNIXNU_REF: 82b847c4ac3f68a57024b3082ffa3a03442defd9
+        UNIXNU_REF: 0f475d68256f3cdecc059af710f39227364c3e74
         DEVICE_REPO: yeyingjun-codes/UniXNU-sheng
         DEVICE_REF: c8f92b208068eeaa4cd2b0f592671f04ee70076e
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
@@ -79,7 +79,7 @@ workflows:
 
         git init -q UniXNU
 
-        git -C UniXNU remote add origin https://github.com/UniXNU/UniXNU.git
+        git -C UniXNU remote add origin https://github.com/yeyingjun-codes/UniXNU.git
 
         git -C UniXNU fetch --depth 1 origin "$UNIXNU_REF"
 
