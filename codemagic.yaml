@@ -158,7 +158,10 @@ workflows:
         \ --os 27 --uefi ../uefi-sheng --init-data; then\n  root=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\" \"$DIAG/log-$(basename\
         \ \"$f\")\" || true; done\n  tail -c 200000 \"$root\"/build/xnu/fileset-reference/lto-*/lto-build.log > \"$DIAG/09-lto-tail.txt\" 2>/dev/null || true\n  # glob may have failed because the log lives\
         \ elsewhere; grab every lto-build.log on disk\n  find \"$root/build\" -name 'lto-build.log' -size +0c -exec tail -c 200000 {} \\; > \"$DIAG/09-lto-all.txt\" 2>/dev/null || true\n  # and the archive\
-        \ log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\" \"$DIAG/09-fileset-log.txt\" 2>/dev/null || true\n  exit 1\nfi\n"
+        \ log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\" \"$DIAG/09-fileset-log.txt\" 2>/dev/null || true\n  # re-run the LTO make directly so\
+        \ the error lands in 08-package.txt\n  echo \"== direct LTO make retry ==\"\n  lto_dir=$(find \"$root/build/xnu/fileset-reference\" -name 'lto-*' -type d | head -1)\n  if [ -n \"$lto_dir\" ]; then\n\
+        \    make -C \"$lto_dir/source\" build SDKROOT=iphoneos ARCH_CONFIGS=ARM64 MACHINE_CONFIGS=BCM2837 KERNEL_CONFIGS=RELEASE BUILD_LTO=1 BUILD_WERROR=0 OBJROOT=\"$lto_dir/lto-obj\" SYMROOT=\"$lto_dir/lto-sym\"\
+        \ DSTROOT=\"$lto_dir/lto-dst\" 2>&1 | tail -100\n  fi\n  exit 1\nfi\n"
     - name: collect outputs
       script: "set -uo pipefail\nmkdir -p \"$DIAG\" \"$CM_BUILD_DIR/out\"\nL=\"$DIAG/09-outputs.txt\"\nexec > >(tee -a \"$L\") 2>&1\nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n\
         echo \"== tree under $root ==\"\nfind \"$root\" -maxdepth 2 -type f \\( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json' \\) -print -exec ls -l {} \\; 2>/dev/null\
