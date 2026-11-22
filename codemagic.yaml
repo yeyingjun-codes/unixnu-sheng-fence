@@ -156,18 +156,20 @@ workflows:
         \ into gop-legacy-display-27')\nelse:\n    raise SystemExit('expected flag anchor not found in build-gop-legacy-display-27.py')\nPY\n\n# keyboard MCU firmware (nanosic/MCU_Upgrade.bin) needed by\
         \ build-gop-legacy-display-27\necho \"== keyboard firmware ==\"\ncd \"$WORK/device\"\npython3 scripts/extract-files.py --section Keyboard\nls -l .cache/firmware/nanosic/MCU_Upgrade.bin\n\nroot=\"\
         $WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n# extend stub regex to cover boot-progress diagnostic hooks\npython3 - \"$WORK/UniXNU/scripts/build-fileset-release-reference.py\" <<'PY'\n\
-        import pathlib, sys\np = pathlib.Path(sys.argv[1])\nt = p.read_text()\nold = 'r'^\\s+\"(_(?:native_[a-z0-9_]+|boot_log_rounds))\"''\nnew = 'r'^\\s+\"(_(?:native_[a-z0-9_]+|boot_log_rounds|boot_cache_input_capture|boot_log_checkpoint|boot_log_startup_stage))\"\
-        ''\nif new in t:\n    print('stub regex already extended')\nelif old in t:\n    p.write_text(t.replace(old, new, 1))\n    print('extended stub regex for boot-progress hooks')\nelse:\n    raise SystemExit('stub\
-        \ regex anchor not found')\nPY\n\n# pre-flight: run fileset build directly to surface the real LTO error\necho \"== pre-flight fileset build ==\"\npython3 \"$WORK/UniXNU/scripts/build-fileset-release-reference.py\"\
-        \ --tree \"$root\" --lto 2>&1 | tail -50 || true\n\n# Apple IPSW CDN occasionally drops the connection mid-download; retry up to 3 times\nfor attempt in 1 2 3; do\n  echo \"== package.sh attempt\
-        \ $attempt ==\"\n  if scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data; then\n    break\n  fi\n  if [ \"$attempt\" = 3 ]; then\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp\
-        \ \"$f\" \"$DIAG/log-$(basename \"$f\")\" || true; done\n  tail -c 200000 \"$root/tree/build/xnu/fileset-reference\"/lto-*/lto-build.log > \"$DIAG/09-lto-tail.txt\" 2>/dev/null || true\n  # glob\
-        \ may have failed because the log lives elsewhere; grab every lto-build.log on disk\n  find \"$root/tree/build\" -name 'lto-build.log' -size +0c -exec tail -c 200000 {} \\; > \"$DIAG/09-lto-all.txt\"\
-        \ 2>/dev/null || true\n  # and the archive log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\" \"$DIAG/09-fileset-log.txt\" 2>/dev/null ||\
-        \ true\n  # re-run the LTO make directly so the error lands in 08-package.txt\n  echo \"== direct LTO make retry ==\"\n  lto_dir=$(find \"$root/tree/build/xnu/fileset-reference\" -name 'lto-*' -type\
-        \ d | head -1)\n  if [ -n \"$lto_dir\" ] && [ -d \"$lto_dir/source\" ]; then\n    make -C \"$lto_dir/source\" build SDKROOT=iphoneos ARCH_CONFIGS=ARM64 MACHINE_CONFIGS=BCM2837 KERNEL_CONFIGS=RELEASE\
-        \ BUILD_LTO=1 BUILD_WERROR=0 OBJROOT=\"$lto_dir/lto-obj\" SYMROOT=\"$lto_dir/lto-sym\" DSTROOT=\"$lto_dir/lto-dst\" 2>&1 | tail -100\n  else\n    echo \"lto_dir=$lto_dir not found or source missing\"\
-        \n    ls -la \"$root/build/xnu/fileset-reference/\" 2>/dev/null || true\n  fi\n  exit 1\n  fi\n  echo \"attempt $attempt failed; sleeping 30s before retry\"\n  sleep 30\ndone\n"
+        import pathlib, sys, re\np = pathlib.Path(sys.argv[1])\nt = p.read_text()\n# match the existing regex line for stub_names\npattern = r\"stub_names = sorted\\(set\\(re\\.findall\\(r'[^']+', build_log,\
+        \ re\\.M\\)\\)\\)\"\nreplacement = r\"stub_names = sorted(set(re.findall(r'^\\s+\"(_(?:native_[a-z0-9_]+|boot_log_rounds|boot_cache_input_capture|boot_log_checkpoint|boot_log_startup_stage))\"',\
+        \ build_log, re.M)))\"\nif 'boot_cache_input_capture' in t:\n    print('stub regex already extended')\nelif re.search(pattern, t):\n    t = re.sub(pattern, replacement, t)\n    p.write_text(t)\n\
+        \    print('extended stub regex for boot-progress hooks')\nelse:\n    raise SystemExit('stub_names line not found')\nPY\n\n# pre-flight: run fileset build directly to surface the real LTO error\n\
+        echo \"== pre-flight fileset build ==\"\npython3 \"$WORK/UniXNU/scripts/build-fileset-release-reference.py\" --tree \"$root\" --lto 2>&1 | tail -50 || true\n\n# Apple IPSW CDN occasionally drops\
+        \ the connection mid-download; retry up to 3 times\nfor attempt in 1 2 3; do\n  echo \"== package.sh attempt $attempt ==\"\n  if scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data; then\n\
+        \    break\n  fi\n  if [ \"$attempt\" = 3 ]; then\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\" \"$DIAG/log-$(basename \"$f\")\" || true; done\n  tail -c 200000 \"$root/tree/build/xnu/fileset-reference\"\
+        /lto-*/lto-build.log > \"$DIAG/09-lto-tail.txt\" 2>/dev/null || true\n  # glob may have failed because the log lives elsewhere; grab every lto-build.log on disk\n  find \"$root/tree/build\" -name\
+        \ 'lto-build.log' -size +0c -exec tail -c 200000 {} \\; > \"$DIAG/09-lto-all.txt\" 2>/dev/null || true\n  # and the archive log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\"\
+        \ \"$DIAG/09-fileset-log.txt\" 2>/dev/null || true\n  # re-run the LTO make directly so the error lands in 08-package.txt\n  echo \"== direct LTO make retry ==\"\n  lto_dir=$(find \"$root/tree/build/xnu/fileset-reference\"\
+        \ -name 'lto-*' -type d | head -1)\n  if [ -n \"$lto_dir\" ] && [ -d \"$lto_dir/source\" ]; then\n    make -C \"$lto_dir/source\" build SDKROOT=iphoneos ARCH_CONFIGS=ARM64 MACHINE_CONFIGS=BCM2837\
+        \ KERNEL_CONFIGS=RELEASE BUILD_LTO=1 BUILD_WERROR=0 OBJROOT=\"$lto_dir/lto-obj\" SYMROOT=\"$lto_dir/lto-sym\" DSTROOT=\"$lto_dir/lto-dst\" 2>&1 | tail -100\n  else\n    echo \"lto_dir=$lto_dir not\
+        \ found or source missing\"\n    ls -la \"$root/build/xnu/fileset-reference/\" 2>/dev/null || true\n  fi\n  exit 1\n  fi\n  echo \"attempt $attempt failed; sleeping 30s before retry\"\n  sleep 30\n\
+        done\n"
     - name: collect outputs
       script: "set -uo pipefail\nmkdir -p \"$DIAG\" \"$CM_BUILD_DIR/out\"\nL=\"$DIAG/09-outputs.txt\"\nexec > >(tee -a \"$L\") 2>&1\nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n\
         echo \"== tree under $root ==\"\nfind \"$root\" -maxdepth 2 -type f \\( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json' \\) -print -exec ls -l {} \\; 2>/dev/null\
