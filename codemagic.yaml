@@ -143,7 +143,7 @@ workflows:
         \nfi\n# ensure QcomGeniSpi source and header are reachable for ShengInputTransport\nif [ ! -f \"$TREE/drivers/QcomGeniSpi/GeniSpi.c\" ]; then\n  mkdir -p \"$TREE/drivers/QcomGeniSpi\"\n  cp \"$WORK/UniXNU/drivers/QcomGeniSpi/GeniSpi.h\"\
         \ \"$WORK/UniXNU/drivers/QcomGeniSpi/GeniSpi.c\" \"$TREE/drivers/QcomGeniSpi/\"\nfi\nls -l \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\" \"$TREE/drivers/QcomGeniSpi/GeniSpi.h\" \"$TREE/drivers/QcomGeniSpi/GeniSpi.c\"\
         \n# kClamshellLog is only used inside #if defined(XNU_TARGET_OS_OSX) (publishLid), but defined\n# outside it; on iOS it becomes an unused variable and -Werror aborts the gop-legacy-display\n# archive.\
-        \ Mark it unused; no logic change. Refuse to edit if the source drifts.\npython3 - \"$TREE/kits/sheng/KeyboardProbe.cpp\" <<'PY'\nimport pathlib, sys\np = pathlib.Path(sys.argv[1])\nt = p.read_text()\n\
+        \ Mark it unused; no logic change. Refuse to edit if the source drifts.\npython3 - \"$WORK/device/package/KeyboardProbe.cpp\" <<'PY'\nimport pathlib, sys\np = pathlib.Path(sys.argv[1])\nt = p.read_text()\n\
         old = 'static const char kClamshellLog[] KEYBOARD_CONST ='\nnew = 'static const char kClamshellLog[] __attribute__((unused)) KEYBOARD_CONST ='\nif new in t:\n    print('kClamshellLog already marked\
         \ unused')\nelif old in t:\n    p.write_text(t.replace(old, new, 1))\n    print('marked kClamshellLog unused for iOS -Werror build')\nelse:\n    raise SystemExit('kClamshellLog declaration not found;\
         \ upstream changed, re-inspect')\nPY\n\nscripts/package.sh --os 27 --uefi ../uefi-sheng --init-data\n"
