@@ -48,15 +48,15 @@ jobs:
         RUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\necho \"rustup keg: $RUSTUP_BIN\"\n[ -x \"$RUSTUP_BIN/rustup\"\
         \ ] && export PATH=\"$RUSTUP_BIN:$PATH\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$PATH\"\
         \nprintf '%s\\n' \"/opt/homebrew/opt/llvm/bin\" \"/opt/homebrew/opt/lld/bin\" \"/opt/homebrew/opt/bison/bin\" \"$HOME/.cargo/bin\"\
-        \ \"$RUSTUP_BIN\" >> \"$GITHUB_ENV\"\necho \"== rustup ==\"\nif command -v rustup >/dev/null; then\n  rustup toolchain\
+        \ \"$RUSTUP_BIN\" >> \"$GITHUB_PATH\"\necho \"== rustup ==\"\nif command -v rustup >/dev/null; then\n  rustup toolchain\
         \ install 1.98.0 --profile minimal --component rust-src 2>&1 | tail -5\n  echo \"rustup rc=$?\"\nelse\n  echo \"rustup\
         \ missing, trying rustup-init\"\n  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh\
         \ && \\\n    sh /tmp/rustup-init.sh -y --default-toolchain 1.98.0 --profile minimal --component rust-src --no-modify-path\
         \ 2>&1 | tail -5\n  export PATH=\"$HOME/.cargo/bin:$PATH\"\nfi\necho \"== ipsw (direct release, no tap) ==\"\nif !\
         \ command -v ipsw >/dev/null; then\n  mkdir -p \"$HOME/.local/bin\"\n  curl -fL --retry 3 -o /tmp/ipsw.tar.gz \"https://github.com/blacktop/ipsw/releases/download/v3.1.741/ipsw_3.1.741_macOS_arm64.tar.gz\"\
         \ 2>&1 | tail -3\n  tar -xzf /tmp/ipsw.tar.gz -C \"$HOME/.local/bin\" && chmod +x \"$HOME/.local/bin/ipsw\"\n  export\
-        \ PATH=\"$HOME/.local/bin:$PATH\"\n  printf '%s\\n' \"$HOME/.local/bin\" >> \"$GITHUB_ENV\"\nfi\necho \"== verify ==\"\
-        \nok=1\nfor t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool \\\n         mformat\
+        \ PATH=\"$HOME/.local/bin:$PATH\"\n  printf '%s\\n' \"$HOME/.local/bin\" >> \"$GITHUB_PATH\"\nfi\necho \"== verify\
+        \ ==\"\nok=1\nfor t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool \\\n         mformat\
         \ mcopy ipsw cargo rustc; do\n  if p=$(command -v \"$t\" 2>/dev/null); then echo \"ok   $t -> $p\"; else echo \"MISS\
         \ $t\"; ok=0; fi\ndone\nfor t in lld-link llvm-lib llvm-rc llvm-nm llvm-objcopy; do\n  if [ -x \"/opt/homebrew/opt/llvm/bin/$t\"\
         \ ] || [ -x \"/opt/homebrew/opt/lld/bin/$t\" ]; then echo \"ok   $t\"; else echo \"MISS $t\"; ok=0; fi\ndone\necho\
