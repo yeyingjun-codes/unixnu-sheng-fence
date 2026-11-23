@@ -266,18 +266,18 @@ jobs:
         \         'sheng_bt_firmware_release','native_legacy_request_layout','native_legacy_formats',\n         'native_data_io_write_bytes','native_data_io_write_ticks','native_data_io_writes',\n\
         \         'native_data_timer_flushes']\nbody = '/* weak-import stubs for macOS-only probe hooks (iOS build); auto-generated\
         \ */\\n'\nbody += 'long ' + ';\\nlong '.join(stubs) + ';\\n'\nxnu = pathlib.Path(__import__('os').environ['WORK'])\
-        \ / 'UniXNU/.cache/xnu-work'\nif not (xnu / 'osfmk' / 'conf' / 'files').is_file():\n    raise SystemExit(f'XNU work\
-        \ tree not found: {xnu}')\ntarget = xnu / 'osfmk' / 'native_weak_stubs.c'\ntarget.write_text(body)\nfiles = xnu /\
-        \ 'osfmk' / 'conf' / 'files'\ntext = files.read_text()\nentry = 'osfmk/native_weak_stubs.c\\tstandard\\n'\nif 'native_weak_stubs.c'\
-        \ not in text:\n    files.write_text(text.rstrip('\\n') + '\\n' + entry)\n    print('stub injected:', target, '+ conf/files\
-        \ entry')\nelse:\n    print('stub already injected')\nPY\n\n# Apple IPSW CDN occasionally drops the connection mid-download;\
-        \ retry up to 3 times\nfor attempt in 1; do\n  echo \"== package.sh attempt $attempt ==\"\n  if scripts/package.sh\
-        \ --os 27 --uefi ../uefi-sheng --init-data; then\n    break\n  fi\n  if [ \"$attempt\" = 3 ]; then\n  for f in \"\
-        $root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\" \"$DIAG/log-$(basename \"$f\")\" || true; done\n  tail -c 200000\
-        \ \"$root/tree/build/xnu/fileset-reference\"/lto-*/lto-build.log > \"$DIAG/09-lto-tail.txt\" 2>/dev/null || true\n\
-        \  # glob may have failed because the log lives elsewhere; grab every lto-build.log on disk\n  find \"$root/tree/build\"\
-        \ -name 'lto-build.log' -size +0c -exec tail -c 200000 {} \\; > \"$DIAG/09-lto-all.txt\" 2>/dev/null || true\n  #\
-        \ and the archive log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\"\
+        \ / 'UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree/.cache/xnu-work'\nif not (xnu / 'osfmk' / 'conf' /\
+        \ 'files').is_file():\n    raise SystemExit(f'XNU work tree not found: {xnu}')\ntarget = xnu / 'osfmk' / 'native_weak_stubs.c'\n\
+        target.write_text(body)\nfiles = xnu / 'osfmk' / 'conf' / 'files'\ntext = files.read_text()\nentry = 'osfmk/native_weak_stubs.c\\\
+        tstandard\\n'\nif 'native_weak_stubs.c' not in text:\n    files.write_text(text.rstrip('\\n') + '\\n' + entry)\n \
+        \   print('stub injected:', target, '+ conf/files entry')\nelse:\n    print('stub already injected')\nPY\n\n# Apple\
+        \ IPSW CDN occasionally drops the connection mid-download; retry up to 3 times\nfor attempt in 1; do\n  echo \"==\
+        \ package.sh attempt $attempt ==\"\n  if scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data; then\n    break\n\
+        \  fi\n  if [ \"$attempt\" = 3 ]; then\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\" \"$DIAG/log-$(basename\
+        \ \"$f\")\" || true; done\n  tail -c 200000 \"$root/tree/build/xnu/fileset-reference\"/lto-*/lto-build.log > \"$DIAG/09-lto-tail.txt\"\
+        \ 2>/dev/null || true\n  # glob may have failed because the log lives elsewhere; grab every lto-build.log on disk\n\
+        \  find \"$root/tree/build\" -name 'lto-build.log' -size +0c -exec tail -c 200000 {} \\; > \"$DIAG/09-lto-all.txt\"\
+        \ 2>/dev/null || true\n  # and the archive log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\"\
         \ \"$DIAG/09-fileset-log.txt\" 2>/dev/null || true\n  # re-run the LTO make directly so the error lands in 08-package.txt\n\
         \  echo \"== direct LTO make retry ==\"\n  lto_dir=$(find \"$root/tree/build/xnu/fileset-reference\" -name 'lto-*'\
         \ -type d | head -1)\n  if [ -n \"$lto_dir\" ] && [ -d \"$lto_dir/source\" ]; then\n    make -C \"$lto_dir/source\"\
