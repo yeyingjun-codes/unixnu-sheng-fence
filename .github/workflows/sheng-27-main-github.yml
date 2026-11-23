@@ -13,8 +13,8 @@ jobs:
     steps:
     - name: environment diagnostics
       env:
-        WORK: $GITHUB_WORKSPACE/work
-        DIAG: $GITHUB_WORKSPACE/out/diag
+        WORK: ${{ github.workspace }}/work
+        DIAG: ${{ github.workspace }}/out/diag
         UNIXNU_REF: 407ff127af59f6bd96100601f454d099a7341429
         UEFI_REF: sheng
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
@@ -33,8 +33,8 @@ jobs:
         $L\" 2>&1\ncat \"$L\"\n"
     - name: host toolchain
       env:
-        WORK: $GITHUB_WORKSPACE/work
-        DIAG: $GITHUB_WORKSPACE/out/diag
+        WORK: ${{ github.workspace }}/work
+        DIAG: ${{ github.workspace }}/out/diag
         UNIXNU_REF: 407ff127af59f6bd96100601f454d099a7341429
         UEFI_REF: sheng
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
@@ -64,8 +64,8 @@ jobs:
         \ -m\n[ \"$ok\" = 1 ]\n"
     - name: checkout the three trees as siblings
       env:
-        WORK: $GITHUB_WORKSPACE/work
-        DIAG: $GITHUB_WORKSPACE/out/diag
+        WORK: ${{ github.workspace }}/work
+        DIAG: ${{ github.workspace }}/out/diag
         UNIXNU_REF: 407ff127af59f6bd96100601f454d099a7341429
         UEFI_REF: sheng
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
@@ -119,8 +119,8 @@ jobs:
         '
     - name: platform seed sanity
       env:
-        WORK: $GITHUB_WORKSPACE/work
-        DIAG: $GITHUB_WORKSPACE/out/diag
+        WORK: ${{ github.workspace }}/work
+        DIAG: ${{ github.workspace }}/out/diag
         UNIXNU_REF: 407ff127af59f6bd96100601f454d099a7341429
         UEFI_REF: sheng
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
@@ -132,8 +132,8 @@ jobs:
         \ sheng-secrets variable group.' >&2\n  exit 1\nfi\necho \"platform seed present (8 hex digits)\"\n"
     - name: fix the upstream mesa patch header
       env:
-        WORK: $GITHUB_WORKSPACE/work
-        DIAG: $GITHUB_WORKSPACE/out/diag
+        WORK: ${{ github.workspace }}/work
+        DIAG: ${{ github.workspace }}/out/diag
         UNIXNU_REF: 407ff127af59f6bd96100601f454d099a7341429
         UEFI_REF: sheng
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
@@ -155,8 +155,8 @@ jobs:
         \nsed -n '1,6p' \"$p\"\n"
     - name: install WCN7850 firmware (linux-firmware, pinned)
       env:
-        WORK: $GITHUB_WORKSPACE/work
-        DIAG: $GITHUB_WORKSPACE/out/diag
+        WORK: ${{ github.workspace }}/work
+        DIAG: ${{ github.workspace }}/out/diag
         UNIXNU_REF: 407ff127af59f6bd96100601f454d099a7341429
         UEFI_REF: sheng
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
@@ -178,8 +178,8 @@ jobs:
         \    raise SystemExit('firmware mismatch: ' + ', '.join(bad))\nPY\n"
     - name: fetch Ath12kWifi locked sources (linux / freebsd / wpa_supplicant)
       env:
-        WORK: $GITHUB_WORKSPACE/work
-        DIAG: $GITHUB_WORKSPACE/out/diag
+        WORK: ${{ github.workspace }}/work
+        DIAG: ${{ github.workspace }}/out/diag
         UNIXNU_REF: 407ff127af59f6bd96100601f454d099a7341429
         UEFI_REF: sheng
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
@@ -223,8 +223,8 @@ jobs:
         PY\necho \"== upstream check ==\"\npython3 tools/fetch-sources.py --check\ncat out/source-identity.json\n"
     - name: package
       env:
-        WORK: $GITHUB_WORKSPACE/work
-        DIAG: $GITHUB_WORKSPACE/out/diag
+        WORK: ${{ github.workspace }}/work
+        DIAG: ${{ github.workspace }}/out/diag
         UNIXNU_REF: 407ff127af59f6bd96100601f454d099a7341429
         UEFI_REF: sheng
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
@@ -287,8 +287,8 @@ jobs:
         \ || true\n  fi\n  exit 1\n  fi\n  echo \"attempt $attempt failed; sleeping 30s before retry\"\n  sleep 30\ndone\n"
     - name: collect outputs
       env:
-        DIAG: $GITHUB_WORKSPACE/out/diag
-        WORK: $GITHUB_WORKSPACE/work
+        DIAG: ${{ github.workspace }}/out/diag
+        WORK: ${{ github.workspace }}/work
       run: "set -uo pipefail\nmkdir -p \"$DIAG\" \"$CM_BUILD_DIR/out\"\nL=\"$DIAG/09-outputs.txt\"\nexec > >(tee -a \"$L\"\
         ) 2>&1\nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\necho \"== tree under $root ==\"\nfind\
         \ \"$root\" -maxdepth 2 -type f \\( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json'\
