@@ -280,7 +280,7 @@ jobs:
         \ run anchor not found')\np.write_text(t.replace(old,new,1))\nprint('enabled seed grow error reporting')\nPY\n\n#\
         \ Apple IPSW CDN occasionally drops the connection mid-download; retry up to 3 times\nfor attempt in 1; do\n  echo\
         \ \"== package.sh attempt $attempt ==\"\n  if scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data; then\n\
-        \    break\n  fi\n  if [ \"$attempt\" = 3 ]; then\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\"\
+        \    break\n  fi\n  if [ \"$attempt\" = 1 ]; then\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\"\
         \ \"$DIAG/log-$(basename \"$f\")\" || true; done\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && tail -100 \"\
         $f\"; done\n  tail -c 200000 \"$root/tree/build/xnu/fileset-reference\"/lto-*/lto-build.log > \"$DIAG/09-lto-tail.txt\"\
         \ 2>/dev/null || true\n  # glob may have failed because the log lives elsewhere; grab every lto-build.log on disk\n\
