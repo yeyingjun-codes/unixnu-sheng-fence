@@ -278,7 +278,20 @@ jobs:
         \        print('COMMAND FAILED:', args)\n        print('STDOUT:', result.stdout)\n        print('STDERR:', result.stderr)\n\
         \        result.check_returncode()\n    return result.stdout\"\"\"\nif old not in t:\n    raise SystemExit('seed grow\
         \ run anchor not found')\np.write_text(t.replace(old,new,1))\nprint('enabled seed grow error reporting')\nPY\n\n#\
-        \ Apple IPSW CDN occasionally drops the connection mid-download; retry up to 3 times\nfor attempt in 1; do\n  echo\
+        \ Wait for APFS registration after attaching a raw seed image on GitHub macOS runners.\npython3 - <<'PY'\nimport os,\
+        \ pathlib\np = pathlib.Path(os.environ['WORK']) / 'UniXNU/scripts/seed-data-grow.py'\nt = p.read_text()\nold = \"\"\
+        \"        listing = plistlib.loads(subprocess.check_output(['diskutil', 'apfs', 'list', '-plist']))\n        container\
+        \ = None\n        for entry in listing['Containers']:\n            if any(s['DeviceIdentifier'] == store for s in\
+        \ entry.get('PhysicalStores', [])):\n                container = entry['ContainerReference']\n        if not container:\n\
+        \            sys.exit('No APFS container found on the attached seed')\"\"\"\nnew = \"\"\"        import time\n   \
+        \     container = None\n        for attempt in range(30):\n            listing = plistlib.loads(subprocess.check_output(['diskutil',\
+        \ 'apfs', 'list', '-plist']))\n            for entry in listing['Containers']:\n                if any(s['DeviceIdentifier']\
+        \ == store for s in entry.get('PhysicalStores', [])):\n                    container = entry['ContainerReference']\n\
+        \                    break\n            if container:\n                break\n            time.sleep(1)\n        if\
+        \ not container:\n            print('APFS store did not register:', store)\n            print('attach output:', attached)\n\
+        \            sys.exit('No APFS container found on the attached seed')\"\"\"\nif old not in t:\n    raise SystemExit('APFS\
+        \ discovery block not found')\np.write_text(t.replace(old,new,1))\nprint('added APFS registration retry')\nPY\n\n\
+        # Apple IPSW CDN occasionally drops the connection mid-download; retry up to 3 times\nfor attempt in 1; do\n  echo\
         \ \"== package.sh attempt $attempt ==\"\n  if scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data; then\n\
         \    break\n  fi\n  if [ \"$attempt\" = 1 ]; then\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\"\
         \ \"$DIAG/log-$(basename \"$f\")\" || true; done\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && tail -100 \"\
