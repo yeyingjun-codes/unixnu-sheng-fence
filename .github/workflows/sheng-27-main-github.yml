@@ -273,9 +273,9 @@ jobs:
         \    print('injected weak-stub hook after XNU clone')\nelse:\n    print('weak-stub hook already present')\nPY\n\n\
         # Show APFS grow failures in package log (original uses capture_output without printing it).\npython3 - <<'PY'\nimport\
         \ os, pathlib\np = pathlib.Path(os.environ['WORK']) / 'UniXNU/scripts/seed-data-grow.py'\nt = p.read_text()\nold =\
-        \ \"def run(*args): return subprocess.run(args, check=True, capture_output=True, text=True).stdout\"\nnew = \"\"\"\
-        def run(*args):\n    result = subprocess.run(args, capture_output=True, text=True)\n    if result.returncode:\n  \
-        \      print('COMMAND FAILED:', args)\n        print('STDOUT:', result.stdout)\n        print('STDERR:', result.stderr)\n\
+        \ \"def run(*args):\\n    return subprocess.run(args, check=True, capture_output=True, text=True).stdout\"\nnew =\
+        \ \"\"\"def run(*args):\n    result = subprocess.run(args, capture_output=True, text=True)\n    if result.returncode:\n\
+        \        print('COMMAND FAILED:', args)\n        print('STDOUT:', result.stdout)\n        print('STDERR:', result.stderr)\n\
         \        result.check_returncode()\n    return result.stdout\"\"\"\nif old in t:\n    p.write_text(t.replace(old,new,1))\n\
         \    print('enabled seed grow error reporting')\nPY\n\n# Apple IPSW CDN occasionally drops the connection mid-download;\
         \ retry up to 3 times\nfor attempt in 1; do\n  echo \"== package.sh attempt $attempt ==\"\n  if scripts/package.sh\
