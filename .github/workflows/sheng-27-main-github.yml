@@ -66,7 +66,7 @@ jobs:
       env:
         WORK: ${{ github.workspace }}/work
         DIAG: ${{ github.workspace }}/out/diag
-        UNIXNU_REF: b0c3b252f1a731c2393cbe509eeed653f4b71b01
+        UNIXNU_REF: 7fe8a38eda132719482d7ecf3bf0bfacdd3377e5
         UEFI_REF: sheng
         UEFI_REPO: https://github.com/UniXNU/uefi-sheng.git
         UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
