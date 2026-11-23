@@ -231,6 +231,7 @@ jobs:
         UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
         SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
         GHTOKEN: ${{ secrets.GHTOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GHTOKEN }}
       run: "set -euo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08-package.txt\"\nexec > >(tee -a \"$L\") 2>&1\nRUSTUP_BIN=\"\
         $(brew --prefix rustup 2>/dev/null)/bin\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH\"\
         \ncommand -v cargo >/dev/null\nexport JOBS=\"${JOBS:-4}\"\ncd \"$WORK/device\"\nTREE=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree\"\
@@ -278,14 +279,23 @@ jobs:
         \        print('COMMAND FAILED:', args)\n        print('STDOUT:', result.stdout)\n        print('STDERR:', result.stderr)\n\
         \        result.check_returncode()\n    return result.stdout\"\"\"\nif old not in t:\n    raise SystemExit('seed grow\
         \ run anchor not found')\np.write_text(t.replace(old,new,1))\nprint('enabled seed grow error reporting')\nPY\n\n#\
-        \ Apple IPSW CDN occasionally drops the connection mid-download; retry up to 3 times\nfor attempt in 1; do\n  echo\
-        \ \"== package.sh attempt $attempt ==\"\n  if scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data; then\n\
-        \    break\n  fi\n  if [ \"$attempt\" = 1 ]; then\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\"\
-        \ \"$DIAG/log-$(basename \"$f\")\" || true; done\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && tail -100 \"\
-        $f\"; done\n  tail -c 200000 \"$root/tree/build/xnu/fileset-reference\"/lto-*/lto-build.log > \"$DIAG/09-lto-tail.txt\"\
-        \ 2>/dev/null || true\n  # glob may have failed because the log lives elsewhere; grab every lto-build.log on disk\n\
-        \  find \"$root/tree/build\" -name 'lto-build.log' -size +0c -exec tail -c 200000 {} \\; > \"$DIAG/09-lto-all.txt\"\
-        \ 2>/dev/null || true\n  # and the archive log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\"\
+        \ Retry transient GitHub API rate limits while restoring omitted DriverKit headers.\npython3 - <<'PY'\nimport os,\
+        \ pathlib\np = pathlib.Path(os.environ['WORK']) / 'UniXNU/scripts/prepare-xnu-source.py'\nt = p.read_text()\nold =\
+        \ \"\"\"with urllib.request.urlopen(request, timeout=30) as response:\n        return response.read()\"\"\"\nnew =\
+        \ \"\"\"import time\n    for attempt in range(6):\n        try:\n            with urllib.request.urlopen(request,\
+        \ timeout=60) as response:\n                return response.read()\n        except urllib.error.HTTPError as e:\n\
+        \            if e.code not in (403, 429, 500, 502, 503):\n                raise\n            delay = min(60, 5 * (attempt\
+        \ + 1))\n            print(f'GitHub fetch HTTP {e.code}; retry {attempt + 1}/6 after {delay}s')\n            time.sleep(delay)\n\
+        \    raise RuntimeError('GitHub fetch failed after retries: ' + url)\"\"\"\nif old not in t:\n    raise SystemExit('fetch\
+        \ anchor not found')\np.write_text(t.replace(old,new,1))\nprint('added GitHub rate-limit retry')\nPY\n\n# Apple IPSW\
+        \ CDN occasionally drops the connection mid-download; retry up to 3 times\nfor attempt in 1; do\n  echo \"== package.sh\
+        \ attempt $attempt ==\"\n  if scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data; then\n    break\n  fi\n\
+        \  if [ \"$attempt\" = 1 ]; then\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\" \"$DIAG/log-$(basename\
+        \ \"$f\")\" || true; done\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && tail -100 \"$f\"; done\n  tail -c\
+        \ 200000 \"$root/tree/build/xnu/fileset-reference\"/lto-*/lto-build.log > \"$DIAG/09-lto-tail.txt\" 2>/dev/null ||\
+        \ true\n  # glob may have failed because the log lives elsewhere; grab every lto-build.log on disk\n  find \"$root/tree/build\"\
+        \ -name 'lto-build.log' -size +0c -exec tail -c 200000 {} \\; > \"$DIAG/09-lto-all.txt\" 2>/dev/null || true\n  #\
+        \ and the archive log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\"\
         \ \"$DIAG/09-fileset-log.txt\" 2>/dev/null || true\n  # re-run the LTO make directly so the error lands in 08-package.txt\n\
         \  echo \"== direct LTO make retry ==\"\n  lto_dir=$(find \"$root/tree/build/xnu/fileset-reference\" -name 'lto-*'\
         \ -type d | head -1)\n  if [ -n \"$lto_dir\" ] && [ -d \"$lto_dir/source\" ]; then\n    make -C \"$lto_dir/source\"\
