@@ -269,28 +269,25 @@ jobs:
         cat > .cache/xnu-work/osfmk/native_weak_stubs.c <<'STUB_EOF'\nlong sheng_software_aes_probe;\nlong sheng_ethernet_probe;\n\
         long sheng_bt_firmware_read;\nlong sheng_bt_firmware_release;\nlong native_legacy_request_layout;\nlong native_legacy_formats;\n\
         long native_data_io_write_bytes;\nlong native_data_io_write_ticks;\nlong native_data_io_writes;\nlong native_data_timer_flushes;\n\
-        long native_ram_block_volume_seed;\nlong armcpu_sleep_register;\nlong armcpu_spi_mask;\nlong armcpu_spi_share;\nlong\
-        \ armdt_platform_clock_register;\nlong boot_cache_input_capture;\nlong boot_log_checkpoint;\nlong boot_log_rounds;\n\
-        long boot_log_startup_stage;\nlong corecrypto_kext_start;\nlong cs_native4k_chunk_ticks;\nlong cs_native4k_digest_bytes;\n\
-        long cs_native4k_digest_cpu;\nlong cs_native4k_digest_wall;\nlong cs_native4k_record_ticks;\nlong native_adreno_gpu_interrupt;\n\
-        long native_adreno_pool_add;\nlong native_data_flush_blocks;\nlong native_data_flush_ticks;\nlong native_data_flushes;\n\
-        long native_data_io_gate_ticks;\nlong native_data_io_max_ticks;\nlong native_data_io_read_bytes;\nlong native_data_io_read_ticks;\n\
-        long native_data_io_reads;\nlong native_legacy_display_late_probe;\nlong native_legacy_display_probe;\nlong native_ram_block_gpu_addon;\n\
-        long native_source_storage_start;\nlong native_verified_block_manifest_sha384;\nlong native_verified_block_root_authorized;\n\
-        long native_verified_block_volume_device;\nlong sheng_boot_watchdog_policy;\nSTUB_EOF\nif ! grep -q 'osfmk/native_weak_stubs.c'\
-        \ .cache/xnu-work/osfmk/conf/files; then\n  printf 'osfmk/native_weak_stubs.c\\tstandard\\n' >> .cache/xnu-work/osfmk/conf/files\n\
-        fi\n\"\"\"\n    t=t.replace(anchor,stub,1)\n    p.write_text(t)\n    print('injected weak-stub hook after XNU clone')\n\
-        else:\n    print('weak-stub hook already present')\nPY\n\n# Show APFS grow failures in package log (original uses\
-        \ capture_output without printing it).\npython3 - <<'PY'\nimport os, pathlib\np = pathlib.Path(os.environ['WORK'])\
-        \ / 'UniXNU/scripts/seed-data-grow.py'\nt = p.read_text()\nold = \"def run(*args):\\n    return subprocess.run(args,\
-        \ check=True, capture_output=True, text=True).stdout\"\nnew = \"\"\"def run(*args):\n    result = subprocess.run(args,\
-        \ capture_output=True, text=True)\n    if result.returncode:\n        print('COMMAND FAILED:', args)\n        print('STDOUT:',\
-        \ result.stdout)\n        print('STDERR:', result.stderr)\n        result.check_returncode()\n    return result.stdout\"\
-        \"\"\nif old not in t:\n    raise SystemExit('seed grow run anchor not found')\np.write_text(t.replace(old,new,1))\n\
-        print('enabled seed grow error reporting')\nPY\n\n# Retry transient GitHub API rate limits while restoring omitted\
-        \ DriverKit headers.\npython3 - <<'PY'\nimport os, pathlib\np = pathlib.Path(os.environ['WORK']) / 'UniXNU/scripts/prepare-xnu-source.py'\n\
-        t = p.read_text()\nold = \"\"\"with urllib.request.urlopen(request, timeout=30) as response:\n        return response.read()\"\
-        \"\"\nnew = \"\"\"import time\n    for attempt in range(6):\n        try:\n            with urllib.request.urlopen(request,\
+        long armcpu_sleep_register;\nlong armcpu_spi_mask;\nlong armcpu_spi_share;\nlong armdt_platform_clock_register;\n\
+        long corecrypto_kext_start;\nlong cs_native4k_chunk_ticks;\nlong cs_native4k_digest_bytes;\nlong cs_native4k_digest_cpu;\n\
+        long cs_native4k_digest_wall;\nlong cs_native4k_record_ticks;\nlong native_adreno_gpu_interrupt;\nlong native_adreno_pool_add;\n\
+        long native_data_flush_blocks;\nlong native_data_flush_ticks;\nlong native_data_flushes;\nlong native_data_io_gate_ticks;\n\
+        long native_data_io_max_ticks;\nlong native_data_io_read_bytes;\nlong native_data_io_read_ticks;\nlong native_data_io_reads;\n\
+        STUB_EOF\nif ! grep -q 'osfmk/native_weak_stubs.c' .cache/xnu-work/osfmk/conf/files; then\n  printf 'osfmk/native_weak_stubs.c\\\
+        tstandard\\n' >> .cache/xnu-work/osfmk/conf/files\nfi\n\"\"\"\n    t=t.replace(anchor,stub,1)\n    p.write_text(t)\n\
+        \    print('injected weak-stub hook after XNU clone')\nelse:\n    print('weak-stub hook already present')\nPY\n\n\
+        # Show APFS grow failures in package log (original uses capture_output without printing it).\npython3 - <<'PY'\nimport\
+        \ os, pathlib\np = pathlib.Path(os.environ['WORK']) / 'UniXNU/scripts/seed-data-grow.py'\nt = p.read_text()\nold =\
+        \ \"def run(*args):\\n    return subprocess.run(args, check=True, capture_output=True, text=True).stdout\"\nnew =\
+        \ \"\"\"def run(*args):\n    result = subprocess.run(args, capture_output=True, text=True)\n    if result.returncode:\n\
+        \        print('COMMAND FAILED:', args)\n        print('STDOUT:', result.stdout)\n        print('STDERR:', result.stderr)\n\
+        \        result.check_returncode()\n    return result.stdout\"\"\"\nif old not in t:\n    raise SystemExit('seed grow\
+        \ run anchor not found')\np.write_text(t.replace(old,new,1))\nprint('enabled seed grow error reporting')\nPY\n\n#\
+        \ Retry transient GitHub API rate limits while restoring omitted DriverKit headers.\npython3 - <<'PY'\nimport os,\
+        \ pathlib\np = pathlib.Path(os.environ['WORK']) / 'UniXNU/scripts/prepare-xnu-source.py'\nt = p.read_text()\nold =\
+        \ \"\"\"with urllib.request.urlopen(request, timeout=30) as response:\n        return response.read()\"\"\"\nnew =\
+        \ \"\"\"import time\n    for attempt in range(6):\n        try:\n            with urllib.request.urlopen(request,\
         \ timeout=60) as response:\n                return response.read()\n        except urllib.error.HTTPError as e:\n\
         \            if e.code not in (403, 429, 500, 502, 503):\n                raise\n            delay = min(60, 5 * (attempt\
         \ + 1))\n            print(f'GitHub fetch HTTP {e.code}; retry {attempt + 1}/6 after {delay}s')\n            time.sleep(delay)\n\
