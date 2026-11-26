@@ -68,6 +68,8 @@ jobs:
           export PYTHONUNBUFFERED=1
           cd "$WORK/UniXNU"
           ./unixnu defconfig sheng_ipados27_defconfig -D "$WORK/device" --os 27
+          # BaseTools VfrCompile intermittently fails under parallel build; serialize only its make.
+          python3 - "$WORK/UniXNU/scripts/unixnu/firmware.py" -c 'from pathlib import Path; import sys; p=Path(sys.argv[1]); s=p.read_text(); assert "f\"-j{ctx.jobs}\"" in s; p.write_text(s.replace("f\"-j{ctx.jobs}\"", "\"-j1\"")); print("BaseTools serialized; firmware configuration unchanged")'
           echo 'Firmware stage includes fetch-sheng-dts and produces this DTB. Kernel is never selected.'
           ./unixnu build firmware -D "$WORK/device" --os 27 --uefi "$WORK/uefi-sheng" --unique-chip-id "$UNIXNU_UNIQUE_CHIP_ID"
           tree="$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree"
