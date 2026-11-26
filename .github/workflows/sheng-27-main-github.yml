@@ -303,7 +303,10 @@ jobs:
         \ and the archive log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\"\
         \ \"$DIAG/09-fileset-log.txt\" 2>/dev/null || true\n  # Build the upstream diagnostic shim only after the normal image is complete.\n\
   echo \"== diagnostic BootShim probes ==\"\n\
-  python3 device/scripts/package-sheng-probe.py\n\
+  probe_tree=$(find \"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\" -path \"*/uefi-sheng/Platforms/Xiaomi/shengPkg/sheng.dsc\" -printf '%h\\n' | head -1)\n\
+  probe_tree=${probe_tree%/uefi-sheng/Platforms/Xiaomi/shengPkg}\n\
+  test -n \"$probe_tree\"\n\
+  python3 \"$probe_tree/scripts/package-sheng-probe.py\"\n\
   mkdir -p \"$DIAG/probe\"\n\
   cp \"$root/tree/build/sheng/probe/probe-fb.img\" \"$DIAG/probe/\"\n\
   cp \"$root/tree/build/sheng/probe/probe-reset.img\" \"$DIAG/probe/\"\n\
