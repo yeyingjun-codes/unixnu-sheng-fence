@@ -21,12 +21,16 @@ jobs:
         UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
         SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
         GHTOKEN: ${{ secrets.GHTOKEN }}
-      run: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/01-env.txt\"\n{\n  echo \"date: $(date -u)\"\n  echo \"user: $(id -un)  arch: $(uname -m)\"\n  sw_vers || true\n  echo \"--- Xcode ---\"\n  ls\
-        \ -d /Applications/Xcode*.app 2>/dev/null || echo \"no Xcode bundles\"\n  xcodebuild -version 2>&1 || true\n  echo \"sdk(iphoneos): $(xcrun --sdk iphoneos --show-sdk-version 2>&1 || true)\"\n  echo\
-        \ \"clang: $(clang --version 2>&1 | head -2 || true)\"\n  echo \"--- brew ---\"\n  command -v brew || true\n  brew --version 2>&1 | head -2 || true\n  echo \"brew prefix: $(brew --prefix 2>&1 ||\
-        \ echo none)\"\n  echo \"--- disk ---\"\n  df -h / | tail -2\n  echo \"--- tool presence ---\"\n  for t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool mformat mcopy\
-        \ ipsw cargo rustc rustup python3 openssl; do\n    printf '%-18s %s\\n' \"$t\" \"$(command -v \"$t\" || echo MISSING)\"\n  done\n  echo \"--- python ---\"\n  python3 -c 'import tomllib,sys;print(\"\
-        python\",sys.version.split()[0])' 2>&1 || true\n} > \"$L\" 2>&1\ncat \"$L\"\n"
+      run: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/01-env.txt\"\n{\n  echo \"date: $(date -u)\"\n  echo \"user: $(id\
+        \ -un)  arch: $(uname -m)\"\n  sw_vers || true\n  echo \"--- Xcode ---\"\n  ls -d /Applications/Xcode*.app 2>/dev/null\
+        \ || echo \"no Xcode bundles\"\n  xcodebuild -version 2>&1 || true\n  echo \"sdk(iphoneos): $(xcrun --sdk iphoneos\
+        \ --show-sdk-version 2>&1 || true)\"\n  echo \"clang: $(clang --version 2>&1 | head -2 || true)\"\n  echo \"--- brew\
+        \ ---\"\n  command -v brew || true\n  brew --version 2>&1 | head -2 || true\n  echo \"brew prefix: $(brew --prefix\
+        \ 2>&1 || echo none)\"\n  echo \"--- disk ---\"\n  df -h / | tail -2\n  echo \"--- tool presence ---\"\n  for t in\
+        \ clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool mformat mcopy ipsw cargo rustc rustup\
+        \ python3 openssl; do\n    printf '%-18s %s\\n' \"$t\" \"$(command -v \"$t\" || echo MISSING)\"\n  done\n  echo \"\
+        --- python ---\"\n  python3 -c 'import tomllib,sys;print(\"python\",sys.version.split()[0])' 2>&1 || true\n} > \"\
+        $L\" 2>&1\ncat \"$L\"\n"
     - name: host toolchain
       env:
         WORK: ${{ github.workspace }}/work
@@ -37,19 +41,27 @@ jobs:
         UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
         SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
         GHTOKEN: ${{ secrets.GHTOKEN }}
-      run: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/02-toolchain.txt\"\nexec > >(tee -a \"$L\") 2>&1\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$PATH\"\
-        \necho \"== brew install ==\"\nbrew install dtc llvm lld cmake mtools ninja glslang shaderc spirv-tools bison pkgconf rustup 2>&1 | tail -30\necho \"brew install rc=$?\"\n# rustup is keg-only: its\
-        \ toolchain proxies (cargo, rustc) are not linked into /opt/homebrew/bin.\nRUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\necho \"rustup keg: $RUSTUP_BIN\"\n[ -x \"$RUSTUP_BIN/rustup\" ]\
-        \ && export PATH=\"$RUSTUP_BIN:$PATH\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$PATH\"\nprintf '%s\\n' \"/opt/homebrew/opt/llvm/bin\"\
-        \ \"/opt/homebrew/opt/lld/bin\" \"/opt/homebrew/opt/bison/bin\" \"$HOME/.cargo/bin\" \"$RUSTUP_BIN\" >> \"$GITHUB_PATH\"\necho \"== rustup ==\"\nif command -v rustup >/dev/null; then\n  rustup toolchain\
-        \ install 1.98.0 --profile minimal --component rust-src 2>&1 | tail -5\n  echo \"rustup rc=$?\"\nelse\n  echo \"rustup missing, trying rustup-init\"\n  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs\
-        \ -o /tmp/rustup-init.sh && \\\n    sh /tmp/rustup-init.sh -y --default-toolchain 1.98.0 --profile minimal --component rust-src --no-modify-path 2>&1 | tail -5\n  export PATH=\"$HOME/.cargo/bin:$PATH\"\
-        \nfi\necho \"== ipsw (direct release, no tap) ==\"\nif ! command -v ipsw >/dev/null; then\n  mkdir -p \"$HOME/.local/bin\"\n  curl -fL --retry 3 -o /tmp/ipsw.tar.gz \"https://github.com/blacktop/ipsw/releases/download/v3.1.741/ipsw_3.1.741_macOS_arm64.tar.gz\"\
-        \ 2>&1 | tail -3\n  tar -xzf /tmp/ipsw.tar.gz -C \"$HOME/.local/bin\" && chmod +x \"$HOME/.local/bin/ipsw\"\n  export PATH=\"$HOME/.local/bin:$PATH\"\n  printf '%s\\n' \"$HOME/.local/bin\" >> \"\
-        $GITHUB_PATH\"\nfi\necho \"== verify ==\"\nok=1\nfor t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool \\\n         mformat mcopy ipsw cargo rustc; do\n  if p=$(command\
-        \ -v \"$t\" 2>/dev/null); then echo \"ok   $t -> $p\"; else echo \"MISS $t\"; ok=0; fi\ndone\nfor t in lld-link llvm-lib llvm-rc llvm-nm llvm-objcopy; do\n  if [ -x \"/opt/homebrew/opt/llvm/bin/$t\"\
-        \ ] || [ -x \"/opt/homebrew/opt/lld/bin/$t\" ]; then echo \"ok   $t\"; else echo \"MISS $t\"; ok=0; fi\ndone\necho \"cargo: $(cargo --version 2>&1 || echo none)\"\necho \"ok=$ok\"\nsw_vers; xcodebuild\
-        \ -version 2>&1 | head -2; uname -m\n[ \"$ok\" = 1 ]\n"
+      run: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/02-toolchain.txt\"\nexec > >(tee -a \"$L\") 2>&1\nexport PATH=\"\
+        /opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$PATH\"\necho \"== brew install ==\"\
+        \nbrew install dtc llvm lld cmake mtools ninja glslang shaderc spirv-tools bison pkgconf rustup 2>&1 | tail -30\n\
+        echo \"brew install rc=$?\"\n# rustup is keg-only: its toolchain proxies (cargo, rustc) are not linked into /opt/homebrew/bin.\n\
+        RUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\necho \"rustup keg: $RUSTUP_BIN\"\n[ -x \"$RUSTUP_BIN/rustup\"\
+        \ ] && export PATH=\"$RUSTUP_BIN:$PATH\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$PATH\"\
+        \nprintf '%s\\n' \"/opt/homebrew/opt/llvm/bin\" \"/opt/homebrew/opt/lld/bin\" \"/opt/homebrew/opt/bison/bin\" \"$HOME/.cargo/bin\"\
+        \ \"$RUSTUP_BIN\" >> \"$GITHUB_PATH\"\necho \"== rustup ==\"\nif command -v rustup >/dev/null; then\n  rustup toolchain\
+        \ install 1.98.0 --profile minimal --component rust-src 2>&1 | tail -5\n  echo \"rustup rc=$?\"\nelse\n  echo \"rustup\
+        \ missing, trying rustup-init\"\n  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh\
+        \ && \\\n    sh /tmp/rustup-init.sh -y --default-toolchain 1.98.0 --profile minimal --component rust-src --no-modify-path\
+        \ 2>&1 | tail -5\n  export PATH=\"$HOME/.cargo/bin:$PATH\"\nfi\necho \"== ipsw (direct release, no tap) ==\"\nif !\
+        \ command -v ipsw >/dev/null; then\n  mkdir -p \"$HOME/.local/bin\"\n  curl -fL --retry 3 -o /tmp/ipsw.tar.gz \"https://github.com/blacktop/ipsw/releases/download/v3.1.741/ipsw_3.1.741_macOS_arm64.tar.gz\"\
+        \ 2>&1 | tail -3\n  tar -xzf /tmp/ipsw.tar.gz -C \"$HOME/.local/bin\" && chmod +x \"$HOME/.local/bin/ipsw\"\n  export\
+        \ PATH=\"$HOME/.local/bin:$PATH\"\n  printf '%s\\n' \"$HOME/.local/bin\" >> \"$GITHUB_PATH\"\nfi\necho \"== verify\
+        \ ==\"\nok=1\nfor t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool \\\n         mformat\
+        \ mcopy ipsw cargo rustc; do\n  if p=$(command -v \"$t\" 2>/dev/null); then echo \"ok   $t -> $p\"; else echo \"MISS\
+        \ $t\"; ok=0; fi\ndone\nfor t in lld-link llvm-lib llvm-rc llvm-nm llvm-objcopy; do\n  if [ -x \"/opt/homebrew/opt/llvm/bin/$t\"\
+        \ ] || [ -x \"/opt/homebrew/opt/lld/bin/$t\" ]; then echo \"ok   $t\"; else echo \"MISS $t\"; ok=0; fi\ndone\necho\
+        \ \"cargo: $(cargo --version 2>&1 || echo none)\"\necho \"ok=$ok\"\nsw_vers; xcodebuild -version 2>&1 | head -2; uname\
+        \ -m\n[ \"$ok\" = 1 ]\n"
     - name: checkout the three trees as siblings
       env:
         WORK: ${{ github.workspace }}/work
@@ -115,8 +127,9 @@ jobs:
         UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
         SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
         GHTOKEN: ${{ secrets.GHTOKEN }}
-      run: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/05-seed-check.txt\"\nexec > >(tee -a \"$L\") 2>&1\nif ! [[ \"${UNIXNU_UNIQUE_CHIP_ID:-}\" =~ ^[0-9a-fA-F]{8}$ ]]; then\n  echo 'Set UNIXNU_UNIQUE_CHIP_ID\
-        \ (8 hex digits) in the sheng-secrets variable group.' >&2\n  exit 1\nfi\necho \"platform seed present (8 hex digits)\"\n"
+      run: "set -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/05-seed-check.txt\"\nexec > >(tee -a \"$L\") 2>&1\nif ! [[ \"\
+        ${UNIXNU_UNIQUE_CHIP_ID:-}\" =~ ^[0-9a-fA-F]{8}$ ]]; then\n  echo 'Set UNIXNU_UNIQUE_CHIP_ID (8 hex digits) in the\
+        \ sheng-secrets variable group.' >&2\n  exit 1\nfi\necho \"platform seed present (8 hex digits)\"\n"
     - name: fix the upstream mesa patch header
       env:
         WORK: ${{ github.workspace }}/work
@@ -127,14 +140,19 @@ jobs:
         UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
         SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
         GHTOKEN: ${{ secrets.GHTOKEN }}
-      run: "# UniXNU@82b847c4 ships patches/mesa/turnip-frame-diagnostics.patch whose first file\n# (\"tu_frame_diagnostic.h\") is a new file but carries no \"new file mode\" line. With -p1\n# git strips\
-        \ \"--- /dev/null\" to \"dev/null\" and aborts with\n#   error: dev/null: No such file or directory\n# (reproduced locally with git 2.55). Nothing else in the build is touched; the rest of\n# the\
-        \ patch and all 81 kernel patches apply cleanly.\nset -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08a-mesa-patch.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\np=\"$WORK/UniXNU/patches/mesa/turnip-frame-diagnostics.patch\"\
-        \n[ -f \"$p\" ] || { echo \"missing $p\"; exit 1; }\nshasum -a 256 \"$p\"\npython3 - \"$p\" <<'PY'\nimport sys, pathlib\npath = pathlib.Path(sys.argv[1])\ntext = path.read_text()\nmarker = 'diff\
-        \ --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\\n--- /dev/null'\npatched = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h\\\
-        nnew file mode 100644\\n--- /dev/null'\nif 'new file mode 100644\\n--- /dev/null' in text:\n    print('already carries new file mode; nothing to do')\nelif marker not in text:\n    raise SystemExit('unexpected\
-        \ patch layout; refusing to rewrite')\nelse:\n    path.write_text(text.replace(marker, patched, 1))\n    print('inserted \"new file mode 100644\" for tu_frame_diagnostic.h')\nPY\nshasum -a 256 \"\
-        $p\"\nsed -n '1,6p' \"$p\"\n"
+      run: "# UniXNU@82b847c4 ships patches/mesa/turnip-frame-diagnostics.patch whose first file\n# (\"tu_frame_diagnostic.h\"\
+        ) is a new file but carries no \"new file mode\" line. With -p1\n# git strips \"--- /dev/null\" to \"dev/null\" and\
+        \ aborts with\n#   error: dev/null: No such file or directory\n# (reproduced locally with git 2.55). Nothing else\
+        \ in the build is touched; the rest of\n# the patch and all 81 kernel patches apply cleanly.\nset -uo pipefail\nmkdir\
+        \ -p \"$DIAG\"\nL=\"$DIAG/08a-mesa-patch.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\np=\"$WORK/UniXNU/patches/mesa/turnip-frame-diagnostics.patch\"\
+        \n[ -f \"$p\" ] || { echo \"missing $p\"; exit 1; }\nshasum -a 256 \"$p\"\npython3 - \"$p\" <<'PY'\nimport sys, pathlib\n\
+        path = pathlib.Path(sys.argv[1])\ntext = path.read_text()\nmarker = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h\
+        \ b/src/freedreno/vulkan/tu_frame_diagnostic.h\\n--- /dev/null'\npatched = 'diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h\
+        \ b/src/freedreno/vulkan/tu_frame_diagnostic.h\\nnew file mode 100644\\n--- /dev/null'\nif 'new file mode 100644\\\
+        n--- /dev/null' in text:\n    print('already carries new file mode; nothing to do')\nelif marker not in text:\n  \
+        \  raise SystemExit('unexpected patch layout; refusing to rewrite')\nelse:\n    path.write_text(text.replace(marker,\
+        \ patched, 1))\n    print('inserted \"new file mode 100644\" for tu_frame_diagnostic.h')\nPY\nshasum -a 256 \"$p\"\
+        \nsed -n '1,6p' \"$p\"\n"
     - name: install WCN7850 firmware (linux-firmware, pinned)
       env:
         WORK: ${{ github.workspace }}/work
@@ -145,14 +163,19 @@ jobs:
         UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
         SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
         GHTOKEN: ${{ secrets.GHTOKEN }}
-      run: "# device/scripts/build-wifi-userspace.py reads firmware/wcn7850/{amss,m3,board-2}.bin.\n# The repo ships only manifest.json (the blobs stay out), so fetch the exact upstream\n# files from linux-firmware\
-        \ at a pinned commit and verify them against the manifest\n# sizes and SHA-256 before the package step runs.\nset -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/07b-wifi-firmware.txt\"\nexec > >(tee\
-        \ -a \"$L\") 2>&1\nset -e\nREF=286e9e6c952493e36310a054ff2a0327ab8108a7\nBASE=\"https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/ath12k/WCN7850/hw2.0\"\nDST=\"$WORK/device/firmware/wcn7850\"\
-        \nmkdir -p \"$DST\"\nfor f in amss.bin m3.bin board-2.bin; do\n  echo \"== $f\"\n  curl -fsSL --retry 4 --retry-delay 2 -o \"$DST/$f\" \"$BASE/$f?id=$REF\"\n  ls -l \"$DST/$f\"\ndone\npython3 -\
-        \ \"$DST\" <<'PY'\nimport hashlib, json, pathlib, sys\ndst = pathlib.Path(sys.argv[1])\nmanifest = json.loads((dst / 'manifest.json').read_text())['files']\nbad = []\nfor name, meta in manifest.items():\n\
-        \    p = dst / name\n    if not p.is_file():\n        bad.append(name + ': missing')\n        continue\n    data = p.read_bytes()\n    digest = hashlib.sha256(data).hexdigest()\n    ok = len(data)\
-        \ == meta['bytes'] and digest == meta['sha256']\n    print(f\"{name:12} {len(data):>9} {digest} {'OK' if ok else 'MISMATCH'}\")\n    if not ok:\n        bad.append(name)\nif bad:\n    raise SystemExit('firmware\
-        \ mismatch: ' + ', '.join(bad))\nPY\n"
+      run: "# device/scripts/build-wifi-userspace.py reads firmware/wcn7850/{amss,m3,board-2}.bin.\n# The repo ships only\
+        \ manifest.json (the blobs stay out), so fetch the exact upstream\n# files from linux-firmware at a pinned commit\
+        \ and verify them against the manifest\n# sizes and SHA-256 before the package step runs.\nset -uo pipefail\nmkdir\
+        \ -p \"$DIAG\"\nL=\"$DIAG/07b-wifi-firmware.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\nREF=286e9e6c952493e36310a054ff2a0327ab8108a7\n\
+        BASE=\"https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/ath12k/WCN7850/hw2.0\"\n\
+        DST=\"$WORK/device/firmware/wcn7850\"\nmkdir -p \"$DST\"\nfor f in amss.bin m3.bin board-2.bin; do\n  echo \"== $f\"\
+        \n  curl -fsSL --retry 4 --retry-delay 2 -o \"$DST/$f\" \"$BASE/$f?id=$REF\"\n  ls -l \"$DST/$f\"\ndone\npython3 -\
+        \ \"$DST\" <<'PY'\nimport hashlib, json, pathlib, sys\ndst = pathlib.Path(sys.argv[1])\nmanifest = json.loads((dst\
+        \ / 'manifest.json').read_text())['files']\nbad = []\nfor name, meta in manifest.items():\n    p = dst / name\n  \
+        \  if not p.is_file():\n        bad.append(name + ': missing')\n        continue\n    data = p.read_bytes()\n    digest\
+        \ = hashlib.sha256(data).hexdigest()\n    ok = len(data) == meta['bytes'] and digest == meta['sha256']\n    print(f\"\
+        {name:12} {len(data):>9} {digest} {'OK' if ok else 'MISMATCH'}\")\n    if not ok:\n        bad.append(name)\nif bad:\n\
+        \    raise SystemExit('firmware mismatch: ' + ', '.join(bad))\nPY\n"
     - name: fetch Ath12kWifi locked sources (linux / freebsd / wpa_supplicant)
       env:
         WORK: ${{ github.workspace }}/work
@@ -163,27 +186,41 @@ jobs:
         UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
         SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
         GHTOKEN: ${{ secrets.GHTOKEN }}
-      run: "# device/scripts/build-wifi-userspace.py -> drivers/Ath12kWifi/tools/build-supplicant.py\n#   -> prepare-supplicant.py -> fetch-sources.py --check\n# deps/ is not committed (sparse upstream\
-        \ checkouts + a 3 MB tarball), so the check\n# aborts with \"missing source: .../drivers/Ath12kWifi/deps/linux\". Resolve the locked\n# versions here, once, before the package step.\nset -uo pipefail\n\
-        mkdir -p \"$DIAG\"\nL=\"$DIAG/07c-ath12k-sources.txt\"\nexec > >(tee -a \"$L\") 2>&1\nset -e\ncd \"$WORK/device/drivers/Ath12kWifi\"\necho \"== source-lock ==\"\npython3 -c \"import json;d=json.load(open('tools/source-lock.json'));print({k:(v.get('commit')\
-        \ or v.get('sha256')) if isinstance(v,dict) else v for k,v in d.items()})\"\necho \"== materialise deps ==\"\npython3 - <<'PY'\nimport hashlib, json, pathlib, subprocess, tarfile, urllib.request\n\
-        \nroot = pathlib.Path('.').resolve()\nlock = json.loads((root / 'tools/source-lock.json').read_text())\ndeps = root / 'deps'\ndeps.mkdir(exist_ok=True)\n\nfor name in ('linux', 'freebsd'):\n   \
-        \ src = lock[name]\n    d = deps / name\n    if not d.exists():\n        # tools/fetch-sources.py runs `git sparse-checkout add /dir/ ...`, which git rejects\n        # in cone mode: \"specify directories\
-        \ rather than patterns (no leading slash)\".\n        # A plain depth-1 checkout lands on the exact same locked commit, so materialise it\n        # here; then switch that clone to NON-cone sparse\
-        \ checkout seeded with the same\n        # patterns, so the later upstream `sparse-checkout add` call succeeds instead of\n        # aborting the build (build-ath12k-wifi.py calls fetch-sources.sh\
-        \ again).\n        subprocess.run(['git', 'clone', '--depth', '1', '--branch', src['ref'],\n                        src['url'], str(d)], check=True)\n    # A branch head may move after the lock\
-        \ was written; always materialise the exact commit.\n    subprocess.run(['git', '-C', str(d), 'fetch', '--depth', '1', 'origin', src['commit']], check=True)\n    subprocess.run(['git', '-C', str(d),\
-        \ 'checkout', '--detach', src['commit']], check=True)\n    head = subprocess.run(['git', '-C', str(d), 'rev-parse', 'HEAD'],\n                          capture_output=True, text=True, check=True).stdout.strip()\n\
-        \    print(f\"{name}: HEAD {head}\")\n    if head != src['commit']:\n        raise SystemExit(f\"{name}: expected {src['commit']}, found {head}\")\n\n    subprocess.run(['git', '-C', str(d), 'config',\
-        \ 'core.sparseCheckoutCone', 'false'], check=True)\n    subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckout', 'true'], check=True)\n    info = d / '.git/info/sparse-checkout'\n \
-        \   info.parent.mkdir(parents=True, exist_ok=True)\n    info.write_text('\\n'.join(src['paths']) + '\\n')\n    subprocess.run(['git', '-C', str(d), 'read-tree', '-mu', 'HEAD'], check=True)\n   \
-        \ missing = [p for p in src['required'] if not (d / p).is_file()]\n    if missing:\n        raise SystemExit(f\"{name}: sparse checkout dropped required files: {missing[:4]}\")\n    print(f\"{name}:\
-        \ non-cone sparse checkout with {len(src['paths'])} patterns, required files present\")\n\ns = lock['supplicant']\narchive = deps / s['archive']\nif not archive.exists():\n    tmp = archive.with_suffix('.part')\n\
-        \    with urllib.request.urlopen(s['url'], timeout=60) as r, tmp.open('wb') as out:\n        while chunk := r.read(1 << 20):\n            out.write(chunk)\n    tmp.replace(archive)\ndigest = hashlib.sha256(archive.read_bytes()).hexdigest()\n\
-        print(f\"supplicant: {digest}\")\nif digest != s['sha256']:\n    raise SystemExit('supplicant archive hash mismatch')\n\ntarget = deps / s['directory']\nif not target.exists():\n    with tarfile.open(archive)\
-        \ as package:\n        for member in package.getmembers():\n            path = (deps / member.name).resolve()\n            if (not (member.isfile() or member.isdir())\n                    or target.resolve()\
-        \ not in (path, *path.parents)):\n                raise SystemExit(f'unexpected archive member: {member.name}')\n        package.extractall(deps)\nprint('deps ready')\nPY\necho \"== upstream check\
-        \ ==\"\npython3 tools/fetch-sources.py --check\ncat out/source-identity.json\n"
+      run: "# device/scripts/build-wifi-userspace.py -> drivers/Ath12kWifi/tools/build-supplicant.py\n#   -> prepare-supplicant.py\
+        \ -> fetch-sources.py --check\n# deps/ is not committed (sparse upstream checkouts + a 3 MB tarball), so the check\n\
+        # aborts with \"missing source: .../drivers/Ath12kWifi/deps/linux\". Resolve the locked\n# versions here, once, before\
+        \ the package step.\nset -uo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/07c-ath12k-sources.txt\"\nexec > >(tee -a \"\
+        $L\") 2>&1\nset -e\ncd \"$WORK/device/drivers/Ath12kWifi\"\necho \"== source-lock ==\"\npython3 -c \"import json;d=json.load(open('tools/source-lock.json'));print({k:(v.get('commit')\
+        \ or v.get('sha256')) if isinstance(v,dict) else v for k,v in d.items()})\"\necho \"== materialise deps ==\"\npython3\
+        \ - <<'PY'\nimport hashlib, json, pathlib, subprocess, tarfile, urllib.request\n\nroot = pathlib.Path('.').resolve()\n\
+        lock = json.loads((root / 'tools/source-lock.json').read_text())\ndeps = root / 'deps'\ndeps.mkdir(exist_ok=True)\n\
+        \nfor name in ('linux', 'freebsd'):\n    src = lock[name]\n    d = deps / name\n    if not d.exists():\n        #\
+        \ tools/fetch-sources.py runs `git sparse-checkout add /dir/ ...`, which git rejects\n        # in cone mode: \"specify\
+        \ directories rather than patterns (no leading slash)\".\n        # A plain depth-1 checkout lands on the exact same\
+        \ locked commit, so materialise it\n        # here; then switch that clone to NON-cone sparse checkout seeded with\
+        \ the same\n        # patterns, so the later upstream `sparse-checkout add` call succeeds instead of\n        # aborting\
+        \ the build (build-ath12k-wifi.py calls fetch-sources.sh again).\n        subprocess.run(['git', 'clone', '--depth',\
+        \ '1', '--branch', src['ref'],\n                        src['url'], str(d)], check=True)\n    # A branch head may\
+        \ move after the lock was written; always materialise the exact commit.\n    subprocess.run(['git', '-C', str(d),\
+        \ 'fetch', '--depth', '1', 'origin', src['commit']], check=True)\n    subprocess.run(['git', '-C', str(d), 'checkout',\
+        \ '--detach', src['commit']], check=True)\n    head = subprocess.run(['git', '-C', str(d), 'rev-parse', 'HEAD'],\n\
+        \                          capture_output=True, text=True, check=True).stdout.strip()\n    print(f\"{name}: HEAD {head}\"\
+        )\n    if head != src['commit']:\n        raise SystemExit(f\"{name}: expected {src['commit']}, found {head}\")\n\n\
+        \    subprocess.run(['git', '-C', str(d), 'config', 'core.sparseCheckoutCone', 'false'], check=True)\n    subprocess.run(['git',\
+        \ '-C', str(d), 'config', 'core.sparseCheckout', 'true'], check=True)\n    info = d / '.git/info/sparse-checkout'\n\
+        \    info.parent.mkdir(parents=True, exist_ok=True)\n    info.write_text('\\n'.join(src['paths']) + '\\n')\n    subprocess.run(['git',\
+        \ '-C', str(d), 'read-tree', '-mu', 'HEAD'], check=True)\n    missing = [p for p in src['required'] if not (d / p).is_file()]\n\
+        \    if missing:\n        raise SystemExit(f\"{name}: sparse checkout dropped required files: {missing[:4]}\")\n \
+        \   print(f\"{name}: non-cone sparse checkout with {len(src['paths'])} patterns, required files present\")\n\ns =\
+        \ lock['supplicant']\narchive = deps / s['archive']\nif not archive.exists():\n    tmp = archive.with_suffix('.part')\n\
+        \    with urllib.request.urlopen(s['url'], timeout=60) as r, tmp.open('wb') as out:\n        while chunk := r.read(1\
+        \ << 20):\n            out.write(chunk)\n    tmp.replace(archive)\ndigest = hashlib.sha256(archive.read_bytes()).hexdigest()\n\
+        print(f\"supplicant: {digest}\")\nif digest != s['sha256']:\n    raise SystemExit('supplicant archive hash mismatch')\n\
+        \ntarget = deps / s['directory']\nif not target.exists():\n    with tarfile.open(archive) as package:\n        for\
+        \ member in package.getmembers():\n            path = (deps / member.name).resolve()\n            if (not (member.isfile()\
+        \ or member.isdir())\n                    or target.resolve() not in (path, *path.parents)):\n                raise\
+        \ SystemExit(f'unexpected archive member: {member.name}')\n        package.extractall(deps)\nprint('deps ready')\n\
+        PY\necho \"== upstream check ==\"\npython3 tools/fetch-sources.py --check\ncat out/source-identity.json\n"
     - name: package
       env:
         WORK: ${{ github.workspace }}/work
@@ -195,57 +232,90 @@ jobs:
         SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
         GHTOKEN: ${{ secrets.GHTOKEN }}
         GITHUB_TOKEN: ${{ secrets.GHTOKEN }}
-      run: "set -euo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08-package.txt\"\nexec > >(tee -a \"$L\") 2>&1\nRUSTUP_BIN=\"$(brew --prefix rustup 2>/dev/null)/bin\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH\"\
-        \ncommand -v cargo >/dev/null\nexport JOBS=\"${JOBS:-4}\"\ncd \"$WORK/device\"\nTREE=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree\"\n# ensure OS profile is present\nif [ ! -f\
-        \ \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\" ]; then\n  mkdir -p \"$TREE/profiles/os/ipados-27.0.1-24A446\"\n  cp \"$WORK/UniXNU/profiles/os/ipados-27.0.1-24A446/profile.toml\" \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\"\
-        \nfi\n# QcomGeniSpi is now a registered component; remove pre-created dir so tree.assemble can link it\nif [ -d \"$TREE/drivers/QcomGeniSpi\" ] && [ ! -L \"$TREE/drivers/QcomGeniSpi\" ]; then\n\
-        \  rm -rf \"$TREE/drivers/QcomGeniSpi\"\nfi\nls -l \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\" 2>/dev/null || true\n# kClamshellLog is only used inside #if defined(XNU_TARGET_OS_OSX)\
-        \ (publishLid), but defined\n# outside it; on iOS it becomes an unused variable and -Werror aborts the gop-legacy-display\n# archive. Mark it unused; no logic change. Refuse to edit if the source\
-        \ drifts.\npython3 - \"$WORK/device/package/KeyboardProbe.cpp\" <<'PY'\nimport pathlib, sys\np = pathlib.Path(sys.argv[1])\nt = p.read_text()\nold = 'static const char kClamshellLog[] KEYBOARD_CONST\
-        \ ='\nnew = 'static const char kClamshellLog[] __attribute__((unused)) KEYBOARD_CONST ='\nif new in t:\n    print('kClamshellLog already marked unused')\nelif old in t:\n    p.write_text(t.replace(old,\
-        \ new, 1))\n    print('marked kClamshellLog unused for iOS -Werror build')\nelse:\n    raise SystemExit('kClamshellLog declaration not found; upstream changed, re-inspect')\nPY\n\n# gop-legacy-display-27\
-        \ compiles board kits (KeyboardProbe, ShengSleep, ...) with\n# -Werror but several helpers are only used inside #if defined(XNU_TARGET_OS_OSX).\n# Inject -Wno-unused-function/-Wno-unused-variable\
-        \ into that script's compile_cpp\n# flags so iOS builds don't trip over macOS-only leftovers. No logic change.\npython3 - \"$WORK/device/scripts/build-gop-legacy-display-27.py\" <<'PY'\nimport pathlib,\
-        \ sys\np = pathlib.Path(sys.argv[1])\nt = p.read_text()\nold = \"'-Wno-unnecessary-virtual-specifier'\"\nnew = \"'-Wno-unnecessary-virtual-specifier', '-Wno-unused-function', '-Wno-unused-variable'\"\
-        \nif new in t:\n    print('gop-legacy-display flags already patched')\nelif old in t:\n    p.write_text(t.replace(old, new, 1))\n    print('injected -Wno-unused-function/-Wno-unused-variable into\
-        \ gop-legacy-display-27')\nelse:\n    raise SystemExit('expected flag anchor not found in build-gop-legacy-display-27.py')\nPY\n\n# keyboard MCU firmware (nanosic/MCU_Upgrade.bin) needed by build-gop-legacy-display-27\n\
-        echo \"== keyboard firmware ==\"\ncd \"$WORK/device\"\npython3 scripts/extract-files.py --section Keyboard\nls -l .cache/firmware/nanosic/MCU_Upgrade.bin\n\nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\
-        \n# extend stub regex to cover boot-progress diagnostic hooks\npython3 -c \"\nimport pathlib\np = pathlib.Path('$WORK/UniXNU/scripts/build-fileset-release-reference.py')\nt = p.read_text()\nif 'boot_cache_input_capture'\
-        \ not in t:\n    t = t.replace('boot_log_rounds))', 'boot_log_rounds|boot_cache_input_capture|boot_log_checkpoint|boot_log_startup_stage))')\n    p.write_text(t)\n    print('extended stub regex')\n\
-        else:\n    print('already extended')\n\"\n\n# Inject weak-stub build support into build-xnu-4k-baseline.sh after XNU worktree creation.\npython3 - <<'PY'\nimport os, pathlib\np = pathlib.Path(os.environ['WORK'])\
-        \ / 'UniXNU/scripts/build-xnu-4k-baseline.sh'\nt = p.read_text()\nanchor = 'if [ ! -d .cache/xnu-work/.git ]; then\\n  git clone --shared refer/xnu .cache/xnu-work\\nfi'\nassert anchor in t, 'XNU\
-        \ clone anchor not found'\nmarker = '### UNIXNU_WEAK_STUBS ###'\nif marker not in t:\n    stub = \"\"\"if [ ! -d .cache/xnu-work/.git ]; then\\n  git clone --shared refer/xnu .cache/xnu-work\\nfi\n\
-        ### UNIXNU_WEAK_STUBS ###\ncat > .cache/xnu-work/osfmk/native_weak_stubs.c <<'STUB_EOF'\nlong sheng_software_aes_probe;\nlong sheng_ethernet_probe;\nlong sheng_bt_firmware_read;\nlong sheng_bt_firmware_release;\n\
-        long native_legacy_request_layout;\nlong native_legacy_formats;\nlong native_data_io_write_bytes;\nlong native_data_io_write_ticks;\nlong native_data_io_writes;\nlong native_data_timer_flushes;\n\
-        long armcpu_sleep_register;\nlong armcpu_spi_mask;\nlong armcpu_spi_share;\nlong armdt_platform_clock_register;\nlong corecrypto_kext_start;\nlong cs_native4k_chunk_ticks;\nlong cs_native4k_digest_bytes;\n\
-        long cs_native4k_digest_cpu;\nlong cs_native4k_digest_wall;\nlong cs_native4k_record_ticks;\nlong native_adreno_gpu_interrupt;\nlong native_adreno_pool_add;\nlong native_data_flush_blocks;\nlong\
-        \ native_data_flush_ticks;\nlong native_data_flushes;\nlong native_data_io_gate_ticks;\nlong native_data_io_max_ticks;\nlong native_data_io_read_bytes;\nlong native_data_io_read_ticks;\nlong native_data_io_reads;\n\
-        STUB_EOF\nif ! grep -q 'osfmk/native_weak_stubs.c' .cache/xnu-work/osfmk/conf/files; then\n  printf 'osfmk/native_weak_stubs.c\\tstandard\\n' >> .cache/xnu-work/osfmk/conf/files\nfi\n\"\"\"\n  \
-        \  t=t.replace(anchor,stub,1)\n    p.write_text(t)\n    print('injected weak-stub hook after XNU clone')\nelse:\n    print('weak-stub hook already present')\nPY\n\n# Show APFS grow failures in package\
-        \ log (original uses capture_output without printing it).\npython3 - <<'PY'\nimport os, pathlib\np = pathlib.Path(os.environ['WORK']) / 'UniXNU/scripts/seed-data-grow.py'\nt = p.read_text()\nold\
-        \ = \"def run(*args):\\n    return subprocess.run(args, check=True, capture_output=True, text=True).stdout\"\nnew = \"\"\"def run(*args):\n    result = subprocess.run(args, capture_output=True,\
-        \ text=True)\n    if result.returncode:\n        print('COMMAND FAILED:', args)\n        print('STDOUT:', result.stdout)\n        print('STDERR:', result.stderr)\n        result.check_returncode()\n\
-        \    return result.stdout\"\"\"\nif old not in t:\n    raise SystemExit('seed grow run anchor not found')\np.write_text(t.replace(old,new,1))\nprint('enabled seed grow error reporting')\nPY\n\n\
-        # Retry transient GitHub API rate limits while restoring omitted DriverKit headers.\npython3 - <<'PY'\nimport os, pathlib\np = pathlib.Path(os.environ['WORK']) / 'UniXNU/scripts/prepare-xnu-source.py'\n\
-        t = p.read_text()\nold = \"\"\"with urllib.request.urlopen(request, timeout=30) as response:\n        return response.read()\"\"\"\nnew = \"\"\"import time\n    for attempt in range(6):\n      \
-        \  try:\n            with urllib.request.urlopen(request, timeout=60) as response:\n                return response.read()\n        except urllib.error.HTTPError as e:\n            if e.code not\
-        \ in (403, 429, 500, 502, 503):\n                raise\n            delay = min(60, 5 * (attempt + 1))\n            print(f'GitHub fetch HTTP {e.code}; retry {attempt + 1}/6 after {delay}s')\n \
-        \           time.sleep(delay)\n    raise RuntimeError('GitHub fetch failed after retries: ' + url)\"\"\"\nif old not in t:\n    raise SystemExit('fetch anchor not found')\np.write_text(t.replace(old,new,1))\n\
-        print('added GitHub rate-limit retry')\nPY\n\n# Apple IPSW CDN occasionally drops the connection mid-download; retry up to 3 times\nfor attempt in 1; do\n  echo \"== package.sh attempt $attempt\
-        \ ==\"\n  if scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data; then\n    break\n  fi\n  if [ \"$attempt\" = 1 ]; then\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\" \"\
-        $DIAG/log-$(basename \"$f\")\" || true; done\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && tail -100 \"$f\"; done\n  tail -c 200000 \"$root/tree/build/xnu/fileset-reference\"/lto-*/lto-build.log\
-        \ > \"$DIAG/09-lto-tail.txt\" 2>/dev/null || true\n  # glob may have failed because the log lives elsewhere; grab every lto-build.log on disk\n  find \"$root/tree/build\" -name 'lto-build.log' -size\
-        \ +0c -exec tail -c 200000 {} \\; > \"$DIAG/09-lto-all.txt\" 2>/dev/null || true\n  # and the archive log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\"\
-        \ \"$DIAG/09-fileset-log.txt\" 2>/dev/null || true\n  # Build the upstream diagnostic shim only after the normal image is complete.\necho \"== diagnostic BootShim probes ==\"\nprobe_tree=$(find\
-        \ \"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\" -path \"*/uefi-sheng/Platforms/Xiaomi/shengPkg/sheng.dsc\" -printf '%h\\n' | head -1)\nprobe_tree=${probe_tree%/uefi-sheng/Platforms/Xiaomi/shengPkg}\n\
-        test -n \"$probe_tree\"\npython3 \"$probe_tree/scripts/package-sheng-probe.py\"\nmkdir -p \"$DIAG/probe\"\ncp \"$root/tree/build/sheng/probe/probe-fb.img\" \"$DIAG/probe/\"\ncp \"$root/tree/build/sheng/probe/probe-reset.img\"\
-        \ \"$DIAG/probe/\"\ncp \"$root/tree/build/sheng/probe/report.json\" \"$DIAG/probe/\"\nsha256sum \"$DIAG/probe\"/*\n\n  # the kernel log is the authoritative record; the direct retry below lacks\
-        \ the env this tree needs\n  echo \"== kernel log tail ==\"\n  tail -c 120000 \"$root/logs/kernel.log\" > \"$DIAG/09-kernel-log.txt\" 2>/dev/null || true\n  tail -60 \"$DIAG/09-kernel-log.txt\"\
-        \ 2>/dev/null || true\n\n  # re-run the LTO make directly so the error lands in 08-package.txt\n  echo \"== direct LTO make retry ==\"\n  lto_dir=$(find \"$root/tree/build/xnu/fileset-reference\"\
-        \ -name 'lto-*' -type d | head -1)\n  if [ -n \"$lto_dir\" ] && [ -d \"$lto_dir/source\" ]; then\n    make -C \"$lto_dir/source\" build SDKROOT=iphoneos ARCH_CONFIGS=ARM64 MACHINE_CONFIGS=BCM2837\
-        \ KERNEL_CONFIGS=RELEASE BUILD_LTO=1 BUILD_WERROR=0 OBJROOT=\"$lto_dir/lto-obj\" SYMROOT=\"$lto_dir/lto-sym\" DSTROOT=\"$lto_dir/lto-dst\" 2>&1 | tail -100\n  else\n    echo \"lto_dir=$lto_dir not\
-        \ found or source missing\"\n    ls -la \"$root/build/xnu/fileset-reference/\" 2>/dev/null || true\n  fi\n  exit 1\n  fi\n  echo \"attempt $attempt failed; sleeping 30s before retry\"\n  sleep 30\n\
-        done\n"
+      run: "set -euo pipefail\nmkdir -p \"$DIAG\"\nL=\"$DIAG/08-package.txt\"\nexec > >(tee -a \"$L\") 2>&1\nRUSTUP_BIN=\"\
+        $(brew --prefix rustup 2>/dev/null)/bin\"\nexport PATH=\"/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/opt/bison/bin:$HOME/.cargo/bin:$RUSTUP_BIN:$HOME/.local/bin:$PATH\"\
+        \ncommand -v cargo >/dev/null\nexport JOBS=\"${JOBS:-4}\"\ncd \"$WORK/device\"\nTREE=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree\"\
+        \n# ensure OS profile is present\nif [ ! -f \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\" ]; then\n  mkdir\
+        \ -p \"$TREE/profiles/os/ipados-27.0.1-24A446\"\n  cp \"$WORK/UniXNU/profiles/os/ipados-27.0.1-24A446/profile.toml\"\
+        \ \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\"\nfi\n# QcomGeniSpi is now a registered component; remove\
+        \ pre-created dir so tree.assemble can link it\nif [ -d \"$TREE/drivers/QcomGeniSpi\" ] && [ ! -L \"$TREE/drivers/QcomGeniSpi\"\
+        \ ]; then\n  rm -rf \"$TREE/drivers/QcomGeniSpi\"\nfi\nls -l \"$TREE/profiles/os/ipados-27.0.1-24A446/profile.toml\"\
+        \ 2>/dev/null || true\n# kClamshellLog is only used inside #if defined(XNU_TARGET_OS_OSX) (publishLid), but defined\n\
+        # outside it; on iOS it becomes an unused variable and -Werror aborts the gop-legacy-display\n# archive. Mark it unused;\
+        \ no logic change. Refuse to edit if the source drifts.\npython3 - \"$WORK/device/package/KeyboardProbe.cpp\" <<'PY'\n\
+        import pathlib, sys\np = pathlib.Path(sys.argv[1])\nt = p.read_text()\nold = 'static const char kClamshellLog[] KEYBOARD_CONST\
+        \ ='\nnew = 'static const char kClamshellLog[] __attribute__((unused)) KEYBOARD_CONST ='\nif new in t:\n    print('kClamshellLog\
+        \ already marked unused')\nelif old in t:\n    p.write_text(t.replace(old, new, 1))\n    print('marked kClamshellLog\
+        \ unused for iOS -Werror build')\nelse:\n    raise SystemExit('kClamshellLog declaration not found; upstream changed,\
+        \ re-inspect')\nPY\n\n# gop-legacy-display-27 compiles board kits (KeyboardProbe, ShengSleep, ...) with\n# -Werror\
+        \ but several helpers are only used inside #if defined(XNU_TARGET_OS_OSX).\n# Inject -Wno-unused-function/-Wno-unused-variable\
+        \ into that script's compile_cpp\n# flags so iOS builds don't trip over macOS-only leftovers. No logic change.\npython3\
+        \ - \"$WORK/device/scripts/build-gop-legacy-display-27.py\" <<'PY'\nimport pathlib, sys\np = pathlib.Path(sys.argv[1])\n\
+        t = p.read_text()\nold = \"'-Wno-unnecessary-virtual-specifier'\"\nnew = \"'-Wno-unnecessary-virtual-specifier', '-Wno-unused-function',\
+        \ '-Wno-unused-variable'\"\nif new in t:\n    print('gop-legacy-display flags already patched')\nelif old in t:\n\
+        \    p.write_text(t.replace(old, new, 1))\n    print('injected -Wno-unused-function/-Wno-unused-variable into gop-legacy-display-27')\n\
+        else:\n    raise SystemExit('expected flag anchor not found in build-gop-legacy-display-27.py')\nPY\n\n# keyboard\
+        \ MCU firmware (nanosic/MCU_Upgrade.bin) needed by build-gop-legacy-display-27\necho \"== keyboard firmware ==\"\n\
+        cd \"$WORK/device\"\npython3 scripts/extract-files.py --section Keyboard\nls -l .cache/firmware/nanosic/MCU_Upgrade.bin\n\
+        \nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n# extend stub regex to cover boot-progress\
+        \ diagnostic hooks\npython3 -c \"\nimport pathlib\np = pathlib.Path('$WORK/UniXNU/scripts/build-fileset-release-reference.py')\n\
+        t = p.read_text()\nif 'boot_cache_input_capture' not in t:\n    t = t.replace('boot_log_rounds))', 'boot_log_rounds|boot_cache_input_capture|boot_log_checkpoint|boot_log_startup_stage))')\n\
+        \    p.write_text(t)\n    print('extended stub regex')\nelse:\n    print('already extended')\n\"\n\n# Inject weak-stub\
+        \ build support into build-xnu-4k-baseline.sh after XNU worktree creation.\npython3 - <<'PY'\nimport os, pathlib\n\
+        p = pathlib.Path(os.environ['WORK']) / 'UniXNU/scripts/build-xnu-4k-baseline.sh'\nt = p.read_text()\nanchor = 'if\
+        \ [ ! -d .cache/xnu-work/.git ]; then\\n  git clone --shared refer/xnu .cache/xnu-work\\nfi'\nassert anchor in t,\
+        \ 'XNU clone anchor not found'\nmarker = '### UNIXNU_WEAK_STUBS ###'\nif marker not in t:\n    stub = \"\"\"if [ !\
+        \ -d .cache/xnu-work/.git ]; then\\n  git clone --shared refer/xnu .cache/xnu-work\\nfi\n### UNIXNU_WEAK_STUBS ###\n\
+        cat > .cache/xnu-work/osfmk/native_weak_stubs.c <<'STUB_EOF'\nlong sheng_software_aes_probe;\nlong sheng_ethernet_probe;\n\
+        long sheng_bt_firmware_read;\nlong sheng_bt_firmware_release;\nlong native_legacy_request_layout;\nlong native_legacy_formats;\n\
+        long native_data_io_write_bytes;\nlong native_data_io_write_ticks;\nlong native_data_io_writes;\nlong native_data_timer_flushes;\n\
+        long armcpu_sleep_register;\nlong armcpu_spi_mask;\nlong armcpu_spi_share;\nlong armdt_platform_clock_register;\n\
+        long corecrypto_kext_start;\nlong cs_native4k_chunk_ticks;\nlong cs_native4k_digest_bytes;\nlong cs_native4k_digest_cpu;\n\
+        long cs_native4k_digest_wall;\nlong cs_native4k_record_ticks;\nlong native_adreno_gpu_interrupt;\nlong native_adreno_pool_add;\n\
+        long native_data_flush_blocks;\nlong native_data_flush_ticks;\nlong native_data_flushes;\nlong native_data_io_gate_ticks;\n\
+        long native_data_io_max_ticks;\nlong native_data_io_read_bytes;\nlong native_data_io_read_ticks;\nlong native_data_io_reads;\n\
+        STUB_EOF\nif ! grep -q 'osfmk/native_weak_stubs.c' .cache/xnu-work/osfmk/conf/files; then\n  printf 'osfmk/native_weak_stubs.c\\\
+        tstandard\\n' >> .cache/xnu-work/osfmk/conf/files\nfi\n\"\"\"\n    t=t.replace(anchor,stub,1)\n    p.write_text(t)\n\
+        \    print('injected weak-stub hook after XNU clone')\nelse:\n    print('weak-stub hook already present')\nPY\n\n\
+        # Show APFS grow failures in package log (original uses capture_output without printing it).\npython3 - <<'PY'\nimport\
+        \ os, pathlib\np = pathlib.Path(os.environ['WORK']) / 'UniXNU/scripts/seed-data-grow.py'\nt = p.read_text()\nold =\
+        \ \"def run(*args):\\n    return subprocess.run(args, check=True, capture_output=True, text=True).stdout\"\nnew =\
+        \ \"\"\"def run(*args):\n    result = subprocess.run(args, capture_output=True, text=True)\n    if result.returncode:\n\
+        \        print('COMMAND FAILED:', args)\n        print('STDOUT:', result.stdout)\n        print('STDERR:', result.stderr)\n\
+        \        result.check_returncode()\n    return result.stdout\"\"\"\nif old not in t:\n    raise SystemExit('seed grow\
+        \ run anchor not found')\np.write_text(t.replace(old,new,1))\nprint('enabled seed grow error reporting')\nPY\n\n#\
+        \ Retry transient GitHub API rate limits while restoring omitted DriverKit headers.\npython3 - <<'PY'\nimport os,\
+        \ pathlib\np = pathlib.Path(os.environ['WORK']) / 'UniXNU/scripts/prepare-xnu-source.py'\nt = p.read_text()\nold =\
+        \ \"\"\"with urllib.request.urlopen(request, timeout=30) as response:\n        return response.read()\"\"\"\nnew =\
+        \ \"\"\"import time\n    for attempt in range(6):\n        try:\n            with urllib.request.urlopen(request,\
+        \ timeout=60) as response:\n                return response.read()\n        except urllib.error.HTTPError as e:\n\
+        \            if e.code not in (403, 429, 500, 502, 503):\n                raise\n            delay = min(60, 5 * (attempt\
+        \ + 1))\n            print(f'GitHub fetch HTTP {e.code}; retry {attempt + 1}/6 after {delay}s')\n            time.sleep(delay)\n\
+        \    raise RuntimeError('GitHub fetch failed after retries: ' + url)\"\"\"\nif old not in t:\n    raise SystemExit('fetch\
+        \ anchor not found')\np.write_text(t.replace(old,new,1))\nprint('added GitHub rate-limit retry')\nPY\n\n# Apple IPSW\
+        \ CDN occasionally drops the connection mid-download; retry up to 3 times\nfor attempt in 1; do\n  echo \"== package.sh\
+        \ attempt $attempt ==\"\n  if scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data; then\n    break\n  fi\n\
+        \  if [ \"$attempt\" = 1 ]; then\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && cp \"$f\" \"$DIAG/log-$(basename\
+        \ \"$f\")\" || true; done\n  for f in \"$root\"/logs/*.log; do [ -f \"$f\" ] && tail -100 \"$f\"; done\n  tail -c\
+        \ 200000 \"$root/tree/build/xnu/fileset-reference\"/lto-*/lto-build.log > \"$DIAG/09-lto-tail.txt\" 2>/dev/null ||\
+        \ true\n  # glob may have failed because the log lives elsewhere; grab every lto-build.log on disk\n  find \"$root/tree/build\"\
+        \ -name 'lto-build.log' -size +0c -exec tail -c 200000 {} \\; > \"$DIAG/09-lto-all.txt\" 2>/dev/null || true\n  #\
+        \ and the archive log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\"\
+        \ \"$DIAG/09-fileset-log.txt\" 2>/dev/null || true\n  # Build the upstream diagnostic shim only after the normal image\
+        \ is complete.\necho \"== diagnostic BootShim probes ==\"\nprobe_tree=$(find \"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\
+        \ -path \"*/uefi-sheng/Platforms/Xiaomi/shengPkg/sheng.dsc\" -printf '%h\\n' | head -1)\nprobe_tree=${probe_tree%/uefi-sheng/Platforms/Xiaomi/shengPkg}\n\
+        test -n \"$probe_tree\"\npython3 \"$probe_tree/scripts/package-sheng-probe.py\"\nmkdir -p \"$DIAG/probe\"\ncp \"$root/tree/build/sheng/probe/probe-fb.img\"\
+        \ \"$DIAG/probe/\"\ncp \"$root/tree/build/sheng/probe/probe-reset.img\" \"$DIAG/probe/\"\ncp \"$root/tree/build/sheng/probe/report.json\"\
+        \ \"$DIAG/probe/\"\nsha256sum \"$DIAG/probe\"/*\n\n  # the kernel log is the authoritative record; the direct retry\
+        \ below lacks the env this tree needs\n  echo \"== kernel log tail ==\"\n  tail -c 120000 \"$root/logs/kernel.log\"\
+        \ > \"$DIAG/09-kernel-log.txt\" 2>/dev/null || true\n  tail -60 \"$DIAG/09-kernel-log.txt\" 2>/dev/null || true\n\n\
+        \  # re-run the LTO make directly so the error lands in 08-package.txt\n  echo \"== direct LTO make retry ==\"\n \
+        \ lto_dir=$(find \"$root/tree/build/xnu/fileset-reference\" -name 'lto-*' -type d | head -1)\n  if [ -n \"$lto_dir\"\
+        \ ] && [ -d \"$lto_dir/source\" ]; then\n    make -C \"$lto_dir/source\" build SDKROOT=iphoneos ARCH_CONFIGS=ARM64\
+        \ MACHINE_CONFIGS=BCM2837 KERNEL_CONFIGS=RELEASE BUILD_LTO=1 BUILD_WERROR=0 OBJROOT=\"$lto_dir/lto-obj\" SYMROOT=\"\
+        $lto_dir/lto-sym\" DSTROOT=\"$lto_dir/lto-dst\" 2>&1 | tail -100\n  else\n    echo \"lto_dir=$lto_dir not found or\
+        \ source missing\"\n    ls -la \"$root/build/xnu/fileset-reference/\" 2>/dev/null || true\n  fi\n  exit 1\n  fi\n\
+        \  echo \"attempt $attempt failed; sleeping 30s before retry\"\n  sleep 30\ndone\n"
     - name: build BootShimProbe diagnostics
       env:
         DIAG: ${{ github.workspace }}/out/diag
@@ -254,27 +324,21 @@ jobs:
 
         mkdir -p "$DIAG/probe"
 
-        export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/opt/homebrew/bin:$PATH"
-
-        export PYTHONPATH="$WORK/UniXNU/scripts${PYTHONPATH:+:$PYTHONPATH}"
-
-        TREE="$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree"
+        export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:$PATH"
 
         test -f "$WORK/uefi-sheng/Build/shengPkg/DEBUG_CLANGPDB/FV/SILICIUM_UEFI.fd"
 
         test -f "$WORK/device/build/sheng/sheng.dtb"
 
-        test -f "$TREE/uefi-sheng/BootShim/BootShimProbe.S"
+        ln -s "$WORK/uefi-sheng" "$WORK/device/uefi-sheng"
 
-        test -f "$TREE/scripts/package-sheng-probe.py"
+        python3 "$WORK/device/scripts/package-sheng-probe.py"
 
-        python3 "$TREE/scripts/package-sheng-probe.py"
+        cp "$WORK/device/build/sheng/probe/probe-fb.img" "$DIAG/probe/"
 
-        cp "$TREE/build/sheng/probe/probe-fb.img" "$DIAG/probe/"
+        cp "$WORK/device/build/sheng/probe/probe-reset.img" "$DIAG/probe/"
 
-        cp "$TREE/build/sheng/probe/probe-reset.img" "$DIAG/probe/"
-
-        cp "$TREE/build/sheng/probe/report.json" "$DIAG/probe/"
+        cp "$WORK/device/build/sheng/probe/report.json" "$DIAG/probe/"
 
         shasum -a 256 "$DIAG/probe"/*
 
@@ -283,10 +347,13 @@ jobs:
       env:
         DIAG: ${{ github.workspace }}/out/diag
         WORK: ${{ github.workspace }}/work
-      run: "set -uo pipefail\nmkdir -p \"$DIAG\" \"$GITHUB_WORKSPACE/out\"\nL=\"$DIAG/09-outputs.txt\"\nexec > >(tee -a \"$L\") 2>&1\nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\n\
-        echo \"== tree under $root ==\"\nfind \"$root\" -maxdepth 2 -type f \\( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json' \\) -print -exec ls -l {} \\; 2>/dev/null\
-        \ || true\nrc=0\nfor f in boot/boot.img payload/payload.img kernel/kernel.macho package.manifest.json; do\n  if [ -f \"$root/$f\" ]; then\n    cp \"$root/$f\" \"$GITHUB_WORKSPACE/out/$(basename\
-        \ \"$f\")\"\n  else\n    echo \"MISSING $f\"; rc=1\n  fi\ndone\nfor f in \"$GITHUB_WORKSPACE\"/out/*; do [ -f \"$f\" ] && shasum -a 256 \"$f\"; done\nls -l \"$GITHUB_WORKSPACE/out\"\nexit $rc\n"
+      run: "set -uo pipefail\nmkdir -p \"$DIAG\" \"$GITHUB_WORKSPACE/out\"\nL=\"$DIAG/09-outputs.txt\"\nexec > >(tee -a \"\
+        $L\") 2>&1\nroot=\"$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27\"\necho \"== tree under $root ==\"\n\
+        find \"$root\" -maxdepth 2 -type f \\( -name 'boot.img' -o -name 'payload.img' -o -name 'kernel.macho' -o -name '*.json'\
+        \ \\) -print -exec ls -l {} \\; 2>/dev/null || true\nrc=0\nfor f in boot/boot.img payload/payload.img kernel/kernel.macho\
+        \ package.manifest.json; do\n  if [ -f \"$root/$f\" ]; then\n    cp \"$root/$f\" \"$GITHUB_WORKSPACE/out/$(basename\
+        \ \"$f\")\"\n  else\n    echo \"MISSING $f\"; rc=1\n  fi\ndone\nfor f in \"$GITHUB_WORKSPACE\"/out/*; do [ -f \"$f\"\
+        \ ] && shasum -a 256 \"$f\"; done\nls -l \"$GITHUB_WORKSPACE/out\"\nexit $rc\n"
     - name: upload diagnostics
       if: always()
       uses: actions/upload-artifact@v4
