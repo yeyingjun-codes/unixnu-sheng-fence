@@ -79,11 +79,18 @@ jobs:
           cp "$dtb" "$WORK/device/build/sheng/sheng.dtb"
           ln -sfn "$WORK/uefi-sheng" "$WORK/device/uefi-sheng"
           # Single-variable no-FB probe: same reset, no display memory access.
-          python3 - "$WORK/uefi-sheng/BootShim/BootShimProbe.S" -c 'from pathlib import Path; import sys; p=Path(sys.argv[1]); s=p.read_text(); a=s.index("  /* Marker: fill the top of the frame buffer white. */"); b=s.index("#if PROBE_RESET == 1",a); p.write_text(s[:a]+"  /* No-FB variant: PSCI before display access. */\n\n"+s[b:]); print("removed framebuffer marker only; reset path unchanged")'
+          python3 - "$WORK/uefi-sheng/BootShim/BootShimProbe.S" -c 'from pathlib import Path; import sys; p=Path(sys.argv[1]); s=p.read_text(); a=s.index("  /* Marker: fill the top of the frame buffer white. */"); b=s.index("#if PROBE_RESET == 1",a); replacement="  /* No-FB variant: PSCI before display access. */\n\n"; p.write_text(s[:a]+replacement+s[b:]); print("removed framebuffer marker only; reset path unchanged")'
+          grep -q 'No-FB variant' "$WORK/uefi-sheng/BootShim/BootShimProbe.S"
+          ! grep -q '_Paint:' "$WORK/uefi-sheng/BootShim/BootShimProbe.S"
+          echo 'no-FB source mutation verified before packaging'
           python3 -c 'import unixnu.util; print("unixnu.util:", unixnu.util.__file__)'
           command -v clang llvm-objcopy fdtput fdtget
           shasum -a 256 "$fd" "$dtb" "$WORK/device/scripts/package-sheng-probe.py" "$WORK/device/scripts/sheng-abl-dtb.py" "$WORK/uefi-sheng/BootShim/BootShimProbe.S"
           python3 -u "$WORK/device/scripts/package-sheng-probe.py"
+          llvm-objdump -d "$WORK/device/build/sheng/probe/probe-reset.o" | tee "$DIAG/probe-reset-disassembly.txt"
+          ! llvm-objdump -d "$WORK/device/build/sheng/probe/probe-reset.o" | grep -q 'stp'
+          llvm-objdump -d "$WORK/device/build/sheng/probe/probe-reset.o" | grep -q 'smc'
+          echo 'verified: no framebuffer store; PSCI SMC present'
           cp "$WORK/device/build/sheng/probe/probe-fb.img" "$DIAG/probe-fb-no-fb.img"
           cp "$WORK/device/build/sheng/probe/probe-reset.img" "$DIAG/probe-reset-no-fb.img"
           cp "$WORK/device/build/sheng/probe/report.json" "$DIAG/"
