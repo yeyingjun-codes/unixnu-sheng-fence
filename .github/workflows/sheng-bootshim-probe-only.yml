@@ -24,6 +24,12 @@ jobs:
       UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
       SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
     steps:
+      - name: checkout orchestration scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
       - name: prepare probe-only toolchain
         run: |
           set -euo pipefail
