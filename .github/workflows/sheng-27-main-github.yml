@@ -326,20 +326,17 @@ jobs:
 
         export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:$PATH"
 
-        probe_tree=$(find "$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27" -path "*/uefi-sheng/Platforms/Xiaomi/shengPkg/sheng.dsc"
-        -printf ''%h\n'' | head -1)
+        test -f "$WORK/uefi-sheng/Build/shengPkg/DEBUG_CLANGPDB/FV/SILICIUM_UEFI.fd"
 
-        probe_tree=${probe_tree%/uefi-sheng/Platforms/Xiaomi/shengPkg}
+        test -f "$WORK/device/build/sheng/sheng.dtb"
 
-        test -n "$probe_tree"
+        python3 "$WORK/device/scripts/package-sheng-probe.py"
 
-        python3 "$probe_tree/scripts/package-sheng-probe.py"
+        cp "$WORK/device/build/sheng/probe/probe-fb.img" "$DIAG/probe/"
 
-        cp "$probe_tree/build/sheng/probe/probe-fb.img" "$DIAG/probe/"
+        cp "$WORK/device/build/sheng/probe/probe-reset.img" "$DIAG/probe/"
 
-        cp "$probe_tree/build/sheng/probe/probe-reset.img" "$DIAG/probe/"
-
-        cp "$probe_tree/build/sheng/probe/report.json" "$DIAG/probe/"
+        cp "$WORK/device/build/sheng/probe/report.json" "$DIAG/probe/"
 
         shasum -a 256 "$DIAG/probe"/*
 
