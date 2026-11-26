@@ -1,0 +1,97 @@
+name: sheng-bootshim-probe-only
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sheng-bootshim-probe-only
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      WORK: ${{ github.workspace }}/work
+      DIAG: ${{ github.workspace }}/out/diag/probe
+      DEVICE_REF: 60eec04ef1bc85bb1f090dc8679135d5d35f463c
+      UNIXNU_REF: 7d5b2c9b3183729e8655765a4e75180a78d6e46b
+      UEFI_REF: b303410c8e401fc9419ae65a024356ed09a438ef
+      GHTOKEN: ${{ secrets.GHTOKEN }}
+      UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+      SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
+    steps:
+      - name: prepare probe-only toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p "$DIAG"
+          exec > >(tee -a "$DIAG/build.log") 2>&1
+          echo 'Install only firmware/probe tools; no kernel or payload.'
+          brew install dtc llvm lld cmake mtools ninja pkgconf rustup
+          printf '%s\n' /opt/homebrew/opt/llvm/bin /opt/homebrew/opt/lld/bin >> "$GITHUB_PATH"
+          command -v clang llvm-objcopy fdtput fdtget
+
+      - name: checkout fixed probe inputs
+        run: |
+          set -euo pipefail
+          exec > >(tee -a "$DIAG/build.log") 2>&1
+          mkdir -p "$WORK"
+          cd "$WORK"
+          git init -q device
+          git -C device remote add origin "https://x-access-token:${GHTOKEN:-}@github.com/yeyingjun-codes/UniXNU-sheng.git"
+          git -C device fetch --depth 1 origin "$DEVICE_REF"
+          git -C device checkout -q FETCH_HEAD
+          git -C device submodule update --init --recursive --depth 1
+          git init -q UniXNU
+          git -C UniXNU remote add origin https://github.com/yeyingjun-codes/UniXNU.git
+          git -C UniXNU fetch --depth 1 origin "$UNIXNU_REF"
+          git -C UniXNU checkout -q FETCH_HEAD
+          git -C UniXNU submodule update --init --recursive --depth 1
+          git init -q uefi-sheng
+          git -C uefi-sheng remote add origin https://github.com/UniXNU/uefi-sheng.git
+          git -C uefi-sheng fetch --depth 1 origin "$UEFI_REF"
+          git -C uefi-sheng checkout -q FETCH_HEAD
+          git -C uefi-sheng submodule update --init --recursive --depth 1
+          git -C device rev-parse HEAD
+          git -C UniXNU rev-parse HEAD
+          git -C uefi-sheng rev-parse HEAD
+
+      - name: build firmware and BootShim probes only
+        run: |
+          set -euo pipefail
+          exec > >(tee -a "$DIAG/build.log") 2>&1
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:$PATH"
+          export PYTHONPATH="$WORK/UniXNU/scripts${PYTHONPATH:+:$PYTHONPATH}"
+          export PYTHONUNBUFFERED=1
+          cd "$WORK/UniXNU"
+          ./unixnu defconfig sheng_ipados27_defconfig -D "$WORK/device" --os 27
+          echo 'Firmware stage includes fetch-sheng-dts and produces this DTB. Kernel is never selected.'
+          ./unixnu build firmware -D "$WORK/device" --os 27 --uefi "$WORK/uefi-sheng" --unique-chip-id "$UNIXNU_UNIQUE_CHIP_ID"
+          tree="$WORK/UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/tree"
+          fd="$WORK/uefi-sheng/Build/shengPkg/DEBUG_CLANGPDB/FV/SILICIUM_UEFI.fd"
+          dtb="$tree/build/sheng/sheng.dtb"
+          test -f "$fd"
+          test -f "$dtb"
+          mkdir -p "$WORK/device/build/sheng"
+          cp "$dtb" "$WORK/device/build/sheng/sheng.dtb"
+          ln -sfn "$WORK/uefi-sheng" "$WORK/device/uefi-sheng"
+          python3 -c 'import unixnu.util; print("unixnu.util:", unixnu.util.__file__)'
+          command -v clang llvm-objcopy fdtput fdtget
+          shasum -a 256 "$fd" "$dtb" "$WORK/device/scripts/package-sheng-probe.py" "$WORK/device/scripts/sheng-abl-dtb.py" "$WORK/uefi-sheng/BootShim/BootShimProbe.S"
+          python3 -u "$WORK/device/scripts/package-sheng-probe.py"
+          cp "$WORK/device/build/sheng/probe/probe-fb.img" "$DIAG/"
+          cp "$WORK/device/build/sheng/probe/probe-reset.img" "$DIAG/"
+          cp "$WORK/device/build/sheng/probe/report.json" "$DIAG/"
+          shasum -a 256 "$DIAG/probe-fb.img" "$DIAG/probe-reset.img" "$DIAG/report.json"
+
+      - name: upload probe and complete logs on every outcome
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sheng-bootshim-probe-${{ github.run_id }}
+          path: out/diag/probe/**
+          if-no-files-found: error
+          retention-days: 14
