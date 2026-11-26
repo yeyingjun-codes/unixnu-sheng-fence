@@ -78,14 +78,17 @@ jobs:
           mkdir -p "$WORK/device/build/sheng"
           cp "$dtb" "$WORK/device/build/sheng/sheng.dtb"
           ln -sfn "$WORK/uefi-sheng" "$WORK/device/uefi-sheng"
+          # Single-variable no-FB probe: same reset, no display memory access.
+          python3 - "$WORK/uefi-sheng/BootShim/BootShimProbe.S" -c 'from pathlib import Path; import sys; p=Path(sys.argv[1]); s=p.read_text(); a=s.index("  /* Marker: fill the top of the frame buffer white. */"); b=s.index("#if PROBE_RESET == 1",a); p.write_text(s[:a]+"  /* No-FB variant: PSCI before display access. */\n\n"+s[b:]); print("removed framebuffer marker only; reset path unchanged")'
           python3 -c 'import unixnu.util; print("unixnu.util:", unixnu.util.__file__)'
           command -v clang llvm-objcopy fdtput fdtget
           shasum -a 256 "$fd" "$dtb" "$WORK/device/scripts/package-sheng-probe.py" "$WORK/device/scripts/sheng-abl-dtb.py" "$WORK/uefi-sheng/BootShim/BootShimProbe.S"
           python3 -u "$WORK/device/scripts/package-sheng-probe.py"
-          cp "$WORK/device/build/sheng/probe/probe-fb.img" "$DIAG/"
-          cp "$WORK/device/build/sheng/probe/probe-reset.img" "$DIAG/"
+          cp "$WORK/device/build/sheng/probe/probe-fb.img" "$DIAG/probe-fb-no-fb.img"
+          cp "$WORK/device/build/sheng/probe/probe-reset.img" "$DIAG/probe-reset-no-fb.img"
           cp "$WORK/device/build/sheng/probe/report.json" "$DIAG/"
-          shasum -a 256 "$DIAG/probe-fb.img" "$DIAG/probe-reset.img" "$DIAG/report.json"
+          python3 - "$DIAG/report.json" -c 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); r=json.loads(p.read_text()); r["probe_variant"]="no-fb-psci-reset"; r["framebuffer_marker_removed"]=True; p.write_text(json.dumps(r,indent=2)+"\n"); print("probe variant: no-fb-psci-reset")'
+          shasum -a 256 "$DIAG/probe-fb-no-fb.img" "$DIAG/probe-reset-no-fb.img" "$DIAG/report.json"
 
       - name: upload probe and complete logs on every outcome
         if: always()
