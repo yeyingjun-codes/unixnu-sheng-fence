@@ -96,8 +96,8 @@ jobs:
           shasum -a 256 "$fd" "$dtb" "$WORK/device/scripts/package-sheng-probe.py" "$WORK/device/scripts/sheng-abl-dtb.py" "$WORK/uefi-sheng/BootShim/BootShimProbe.S"
           python3 -u "$WORK/device/scripts/package-sheng-probe.py"
           llvm-objdump -d "$WORK/device/build/sheng/probe/probe-reset.o" | tee "$DIAG/probe-reset-disassembly.txt"
-          ! llvm-objdump -d "$WORK/device/build/sheng/probe/probe-reset.o" | grep -q 'stp'
-          llvm-objdump -d "$WORK/device/build/sheng/probe/probe-reset.o" | grep -q 'smc'
+          ! grep -q 'stp' "$DIAG/probe-reset-disassembly.txt"
+          grep -q 'smc' "$DIAG/probe-reset-disassembly.txt"
           echo 'verified: no framebuffer store; PSCI SMC present'
           cp "$WORK/device/build/sheng/probe/probe-fb.img" "$DIAG/probe-fb-no-fb.img"
           cp "$WORK/device/build/sheng/probe/probe-reset.img" "$DIAG/probe-reset-no-fb.img"
