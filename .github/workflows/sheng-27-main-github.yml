@@ -301,7 +301,14 @@ jobs:
         \ true\n  # glob may have failed because the log lives elsewhere; grab every lto-build.log on disk\n  find \"$root/tree/build\"\
         \ -name 'lto-build.log' -size +0c -exec tail -c 200000 {} \\; > \"$DIAG/09-lto-all.txt\" 2>/dev/null || true\n  #\
         \ and the archive log that the failure message points at\n  cp \"$root/logs/archive-20-build-fileset-release-reference.log\"\
-        \ \"$DIAG/09-fileset-log.txt\" 2>/dev/null || true\n  # the kernel log is the authoritative record; the direct retry below lacks the env this tree needs\n  echo \"== kernel log tail ==\"\n  tail -c 120000 \"$root/logs/kernel.log\" > \"$DIAG/09-kernel-log.txt\" 2>/dev/null || true\n  tail -60 \"$DIAG/09-kernel-log.txt\" 2>/dev/null || true\n\n  # re-run the LTO make directly so the error lands in 08-package.txt\n\
+        \ \"$DIAG/09-fileset-log.txt\" 2>/dev/null || true\n  # Build the upstream diagnostic shim only after the normal image is complete.\n\
+  echo \"== diagnostic BootShim probes ==\"\n\
+  python3 device/scripts/package-sheng-probe.py\n\
+  mkdir -p \"$DIAG/probe\"\n\
+  cp \"$root/tree/build/sheng/probe/probe-fb.img\" \"$DIAG/probe/\"\n\
+  cp \"$root/tree/build/sheng/probe/probe-reset.img\" \"$DIAG/probe/\"\n\
+  cp \"$root/tree/build/sheng/probe/report.json\" \"$DIAG/probe/\"\n\
+  sha256sum \"$DIAG/probe\"/*\n\n  # the kernel log is the authoritative record; the direct retry below lacks the env this tree needs\n  echo \"== kernel log tail ==\"\n  tail -c 120000 \"$root/logs/kernel.log\" > \"$DIAG/09-kernel-log.txt\" 2>/dev/null || true\n  tail -60 \"$DIAG/09-kernel-log.txt\" 2>/dev/null || true\n\n  # re-run the LTO make directly so the error lands in 08-package.txt\n\
         \  echo \"== direct LTO make retry ==\"\n  lto_dir=$(find \"$root/tree/build/xnu/fileset-reference\" -name 'lto-*'\
         \ -type d | head -1)\n  if [ -n \"$lto_dir\" ] && [ -d \"$lto_dir/source\" ]; then\n    make -C \"$lto_dir/source\"\
         \ build SDKROOT=iphoneos ARCH_CONFIGS=ARM64 MACHINE_CONFIGS=BCM2837 KERNEL_CONFIGS=RELEASE BUILD_LTO=1 BUILD_WERROR=0\
