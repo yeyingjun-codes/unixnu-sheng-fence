@@ -81,7 +81,7 @@ jobs:
           cp "$dtb" "$WORK/device/build/sheng/sheng.dtb"
           ln -sfn "$WORK/uefi-sheng" "$WORK/device/uefi-sheng"
           # Single-variable no-FB probe: same reset, no display memory access.
-          python3 - "$WORK/uefi-sheng/BootShim/BootShimProbe.S" -c 'from pathlib import Path; import sys; p=Path(sys.argv[1]); s=p.read_text(); a=s.index("  /* Marker: fill the top of the frame buffer white. */"); b=s.index("#if PROBE_RESET == 1",a); replacement="  /* No-FB variant: PSCI before display access. */\n\n"; p.write_text(s[:a]+replacement+s[b:]); print("removed framebuffer marker only; reset path unchanged")'
+          python3 "$GITHUB_WORKSPACE/.github/scripts/make_no_fb_probe.py" "$WORK/uefi-sheng/BootShim/BootShimProbe.S"
           grep -q 'No-FB variant' "$WORK/uefi-sheng/BootShim/BootShimProbe.S"
           ! grep -q '_Paint:' "$WORK/uefi-sheng/BootShim/BootShimProbe.S"
           echo 'no-FB source mutation verified before packaging'
