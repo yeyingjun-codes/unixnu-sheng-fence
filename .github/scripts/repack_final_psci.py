@@ -44,7 +44,23 @@ _UnusedEntry:
 subprocess.run(['clang', '--target=aarch64-linux-gnu', '-c', WORK / 'BootShimFinalReset.S',
                 '-o', WORK / 'BootShimFinalReset.o', '-DREQUIRES_KERNEL_HEADER=1',
                 '-DFD_BASE=0xa7100000', '-DFD_SIZE=0x300000'], check=True)
-subprocess.run(['llvm-objcopy', '-O', 'binary', WORK / 'BootShimFinalReset.o', WORK / 'BootShimFinalReset.bin'], check=True)
+elf = (WORK / 'BootShimFinalReset.o').read_bytes()
+assert elf[:4] == b'\x7fELF' and elf[4] == 2 and elf[5] == 1
+phoff = struct.unpack_from('<Q', elf, 32)[0]
+phentsize, phnum = struct.unpack_from('<HH', elf, 54)
+loads = []
+for index in range(phnum):
+    offset = phoff + index * phentsize
+    p_type, p_flags, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_align = struct.unpack_from('<IIQQQQQQ', elf, offset)
+    if p_type == 1 and p_filesz:
+        loads.append((p_paddr, elf[p_offset:p_offset + p_filesz]))
+assert loads
+base = min(address for address, _ in loads)
+end = max(address + len(data) for address, data in loads)
+binary = bytearray(end - base)
+for address, data in loads:
+    binary[address - base:address - base + len(data)] = data
+(WORK / 'BootShimFinalReset.bin').write_bytes(binary)
 shim = (WORK / 'BootShimFinalReset.bin').read_bytes()
 assert shim[:4] == raw[:4] and shim[8:16] == raw[8:16] and shim[56:60] == b'ARM\x64'
 assert bytes.fromhex('030000d4') in shim[:len(shim)]
