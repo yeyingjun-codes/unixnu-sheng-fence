@@ -47,7 +47,8 @@ subprocess.run(['clang', '--target=aarch64-linux-gnu', '-c', WORK / 'BootShimFin
 subprocess.run(['ld.lld', '-m', 'aarch64elf', '-Ttext=0', '--image-base=0', '--no-rosegment',
                 '-o', WORK / 'BootShimFinalReset.elf', WORK / 'BootShimFinalReset.o'], check=True)
 elf = (WORK / 'BootShimFinalReset.elf').read_bytes()
-assert elf[:4] == b'\x7fELF' and elf[4] == 2 and elf[5] == 1
+print('ELF header', elf[:64].hex(), flush=True)
+assert elf[:4] == bytes([0x7f]) + b'ELF' and elf[4] == 2 and elf[5] == 1
 phoff = struct.unpack_from('<Q', elf, 32)[0]
 phentsize, phnum = struct.unpack_from('<HH', elf, 54)
 shoff = struct.unpack_from('<Q', elf, 40)[0]
