@@ -44,13 +44,16 @@ _UnusedEntry:
 subprocess.run(['clang', '--target=aarch64-linux-gnu', '-c', WORK / 'BootShimFinalReset.S',
                 '-o', WORK / 'BootShimFinalReset.o', '-DREQUIRES_KERNEL_HEADER=1',
                 '-DFD_BASE=0xa7100000', '-DFD_SIZE=0x300000'], check=True)
-subprocess.run(['lld', '-flavor', 'gnu', '-m', 'aarch64elf', '-Ttext=0',
-                '--image-base=0', '--no-rosegment', '-static',
-                '-o', WORK / 'BootShimFinalReset.elf', WORK / 'BootShimFinalReset.o'], check=True)
-subprocess.run(['file', WORK / 'BootShimFinalReset.o', WORK / 'BootShimFinalReset.elf'], check=True)
-subprocess.run(['llvm-readelf', '-h', '-l', WORK / 'BootShimFinalReset.elf'], check=True)
-subprocess.run(['llvm-objcopy', '-O', 'binary', WORK / 'BootShimFinalReset.elf',
-                WORK / 'BootShimFinalReset.bin'], check=True)
+subprocess.run(['llvm-objcopy', '-O', 'binary', '--only-section=.text',
+                WORK / 'BootShimFinalReset.o', WORK / 'BootShimFinalReset.bin'], check=True)
+shim = bytearray((WORK / 'BootShimFinalReset.bin').read_bytes())
+# The assembly has one unresolved ADR relocation at offset 0. _Payload is the
+# end of .text; resolve it exactly as the linker would, without an ELF wrapper.
+assert len(shim) == 224 and shim[:4] == bytes.fromhex('01070010')
+delta = len(shim)
+imm = ((delta & 3) << 29) | (((delta >> 2) & 0x7ffff) << 5)
+shim[:4] = struct.pack('<I', 0x10000001 | imm)
+(WORK / 'BootShimFinalReset.bin').write_bytes(shim)
 shim = (WORK / 'BootShimFinalReset.bin').read_bytes()
 print('header compare', shim[:4].hex(), raw[:4].hex(), shim[8:16].hex(), raw[8:16].hex(), shim[56:60].hex(), flush=True)
 assert shim[:4] == raw[:4] and shim[8:16] == raw[8:16] and shim[56:60] == b'ARM\x64'
