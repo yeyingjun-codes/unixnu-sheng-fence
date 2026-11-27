@@ -1,0 +1,40 @@
+name: sheng-direct-psci-repack
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repack:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      WORK: ${{ github.workspace }}/work
+      DIAG: ${{ github.workspace }}/out/diag/probe
+      GHTOKEN: ${{ secrets.GHTOKEN }}
+    steps:
+      - name: checkout fixed repack scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: repack verified image with direct PSCI only
+        run: |
+          set -euo pipefail
+          mkdir -p "$DIAG"
+          exec > >(tee -a "$DIAG/build.log") 2>&1
+          python3 "$GITHUB_WORKSPACE/.github/scripts/fetch_direct_inputs.py"
+          python3 "$GITHUB_WORKSPACE/.github/scripts/repack_direct_psci.py"
+          shasum -a 256 "$DIAG/probe-direct-psci.img" "$DIAG/report.json"
+
+      - name: upload direct PSCI image and complete logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sheng-direct-psci-${{ github.run_id }}
+          path: out/diag/probe/**
+          if-no-files-found: error
+          retention-days: 14
