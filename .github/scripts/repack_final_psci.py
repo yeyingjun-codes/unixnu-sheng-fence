@@ -52,7 +52,7 @@ shim = (WORK / 'BootShimFinalReset.bin').read_bytes()
 assert len(shim) == 224 and shim[:4] == bytes.fromhex('01070010')
 shim = (WORK / 'BootShimFinalReset.bin').read_bytes()
 print('header compare', shim[:4].hex(), raw[:4].hex(), shim[8:16].hex(), raw[8:16].hex(), shim[56:60].hex(), flush=True)
-assert shim[:4] == raw[:4] and shim[8:16] == raw[8:16] and shim[56:60] == b'ARM\x64'
+assert shim[:4] == bytes.fromhex('01070010') and shim[8:16] == raw[8:16] and shim[56:60] == b'ARM\x64'
 assert bytes.fromhex('030000d4') in shim[:len(shim)]
 new_kernel = gzip.compress(shim + fd, mtime=0) + dtb
 (WORK / 'final.Image.gz-dtb').write_bytes(new_kernel)
