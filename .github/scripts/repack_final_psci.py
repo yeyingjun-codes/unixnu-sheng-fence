@@ -48,13 +48,30 @@ elf = (WORK / 'BootShimFinalReset.o').read_bytes()
 assert elf[:4] == b'\x7fELF' and elf[4] == 2 and elf[5] == 1
 phoff = struct.unpack_from('<Q', elf, 32)[0]
 phentsize, phnum = struct.unpack_from('<HH', elf, 54)
+shoff = struct.unpack_from('<Q', elf, 40)[0]
+shentsize, shnum, shstrndx = struct.unpack_from('<HHH', elf, 58)
+sections = []
+for index in range(shnum):
+    offset = shoff + index * shentsize
+    fields = struct.unpack_from('<IIQQQQIIQQ', elf, offset)
+    sections.append(fields)
+strhdr = sections[shstrndx]
+strings = elf[strhdr[4]:strhdr[4] + strhdr[5]]
+def section_name(fields):
+    end = strings.index(0, fields[0])
+    return strings[fields[0]:end].decode()
 loads = []
 for index in range(phnum):
     offset = phoff + index * phentsize
     p_type, p_flags, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_align = struct.unpack_from('<IIQQQQQQ', elf, offset)
     if p_type == 1 and p_filesz:
         loads.append((p_paddr, elf[p_offset:p_offset + p_filesz]))
-assert loads
+if not loads:
+    for fields in sections:
+        if fields[1] == 1 and fields[2] & 2 and fields[5]:
+            loads.append((fields[3], elf[fields[4]:fields[4] + fields[5]]))
+assert loads, [(section_name(s), s[3], s[5]) for s in sections]
+print('ELF sections', [(section_name(s), hex(s[3]), s[5]) for s in sections], flush=True)
 base = min(address for address, _ in loads)
 end = max(address + len(data) for address, data in loads)
 binary = bytearray(end - base)
