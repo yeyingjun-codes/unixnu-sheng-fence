@@ -44,8 +44,8 @@ _UnusedEntry:
 subprocess.run(['clang', '--target=aarch64-linux-gnu', '-c', WORK / 'BootShimFinalReset.S',
                 '-o', WORK / 'BootShimFinalReset.o', '-DREQUIRES_KERNEL_HEADER=1',
                 '-DFD_BASE=0xa7100000', '-DFD_SIZE=0x300000'], check=True)
-subprocess.run(['clang', '--target=aarch64-linux-gnu', '-fuse-ld=/opt/homebrew/opt/lld/bin/ld.lld',
-                '-nostdlib', '-static', '-Wl,-Ttext=0,--image-base=0,--no-rosegment',
+subprocess.run(['lld', '-flavor', 'gnu', '-m', 'aarch64elf', '-Ttext=0',
+                '--image-base=0', '--no-rosegment', '-static',
                 '-o', WORK / 'BootShimFinalReset.elf', WORK / 'BootShimFinalReset.o'], check=True)
 subprocess.run(['file', WORK / 'BootShimFinalReset.o', WORK / 'BootShimFinalReset.elf'], check=True)
 subprocess.run(['llvm-readelf', '-h', '-l', WORK / 'BootShimFinalReset.elf'], check=True)
