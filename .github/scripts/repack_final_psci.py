@@ -44,7 +44,9 @@ _UnusedEntry:
 subprocess.run(['clang', '--target=aarch64-linux-gnu', '-c', WORK / 'BootShimFinalReset.S',
                 '-o', WORK / 'BootShimFinalReset.o', '-DREQUIRES_KERNEL_HEADER=1',
                 '-DFD_BASE=0xa7100000', '-DFD_SIZE=0x300000'], check=True)
-subprocess.run(['ld.lld', '-m', 'aarch64elf', '-Ttext=0', '-o', WORK / 'BootShimFinalReset.elf', WORK / 'BootShimFinalReset.o'], check=True)
+subprocess.run(['clang', '--target=aarch64-linux-gnu', '-fuse-ld=lld', '-nostdlib',
+                '-Wl,-Ttext=0', '-Wl,--no-rosegment', '-o', WORK / 'BootShimFinalReset.elf',
+                WORK / 'BootShimFinalReset.o'], check=True)
 elf = (WORK / 'BootShimFinalReset.elf').read_bytes()
 assert elf[:4] == b'\x7fELF' and elf[4] == 2 and elf[5] == 1
 phoff = struct.unpack_from('<Q', elf, 32)[0]
