@@ -45,7 +45,10 @@ subprocess.run(['clang', '--target=aarch64-linux-gnu', '-c', WORK / 'BootShimFin
                 '-o', WORK / 'BootShimFinalReset.o', '-DREQUIRES_KERNEL_HEADER=1',
                 '-DFD_BASE=0xa7100000', '-DFD_SIZE=0x300000'], check=True)
 subprocess.run(['ld.lld', '-m', 'aarch64elf', '-Ttext=0', '--image-base=0', '--no-rosegment',
+                '-oformat', 'elf64-littleaarch64',
                 '-o', WORK / 'BootShimFinalReset.elf', WORK / 'BootShimFinalReset.o'], check=True)
+subprocess.run(['file', WORK / 'BootShimFinalReset.o', WORK / 'BootShimFinalReset.elf'], check=True)
+subprocess.run(['llvm-readelf', '-h', '-l', WORK / 'BootShimFinalReset.elf'], check=True)
 subprocess.run(['llvm-objcopy', '-O', 'binary', WORK / 'BootShimFinalReset.elf',
                 WORK / 'BootShimFinalReset.bin'], check=True)
 shim = (WORK / 'BootShimFinalReset.bin').read_bytes()
