@@ -79,6 +79,7 @@ for address, data in loads:
     binary[address - base:address - base + len(data)] = data
 (WORK / 'BootShimFinalReset.bin').write_bytes(binary)
 shim = (WORK / 'BootShimFinalReset.bin').read_bytes()
+print('header compare', shim[:4].hex(), raw[:4].hex(), shim[8:16].hex(), raw[8:16].hex(), shim[56:60].hex(), flush=True)
 assert shim[:4] == raw[:4] and shim[8:16] == raw[8:16] and shim[56:60] == b'ARM\x64'
 assert bytes.fromhex('030000d4') in shim[:len(shim)]
 new_kernel = gzip.compress(shim + fd, mtime=0) + dtb
