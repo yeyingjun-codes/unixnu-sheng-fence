@@ -31,6 +31,10 @@ jobs:
           set -euo pipefail
           mkdir -p "$DIAG"
           exec > >(tee -a "$DIAG/build.log") 2>&1
+          brew install llvm lld
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:$PATH"
+          clang --version
+          ld.lld --version
           python3 "$GITHUB_WORKSPACE/.github/scripts/fetch_direct_inputs.py"
           python3 "$GITHUB_WORKSPACE/.github/scripts/repack_final_psci.py"
           shasum -a 256 "$DIAG/probe-final-psci.img" "$DIAG/report.json"
