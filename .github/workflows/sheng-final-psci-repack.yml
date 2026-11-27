@@ -35,6 +35,8 @@ jobs:
           export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:$PATH"
           clang --version
           ld.lld --version
+          type -a clang ld.lld llvm-objcopy
+          ls -l /opt/homebrew/opt/lld/bin/ld.lld /opt/homebrew/opt/llvm/bin/clang
           python3 "$GITHUB_WORKSPACE/.github/scripts/fetch_direct_inputs.py"
           python3 "$GITHUB_WORKSPACE/.github/scripts/repack_final_psci.py"
           shasum -a 256 "$DIAG/probe-final-psci.img" "$DIAG/report.json"
