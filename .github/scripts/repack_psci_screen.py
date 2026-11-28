@@ -33,7 +33,9 @@ subprocess.run(['clang', '--target=aarch64-linux-gnu', '-c', WORK / 'BootShimPsc
 subprocess.run(['llvm-objcopy', '-O', 'binary', '--only-section=.text',
                 WORK / 'BootShimPsciScreen.o', WORK / 'BootShimPsciScreen.bin'], check=True)
 shim = (WORK / 'BootShimPsciScreen.bin').read_bytes()
-assert shim[:4] == bytes.fromhex('01070010')
+first = struct.unpack_from('<I', shim)[0]
+assert (first & 0x9f000000) == 0x10000000 and (first & 31) == 1, hex(first)
+assert shim[4:8] == bytes.fromhex('0f000014')
 assert shim[8:16] == raw[8:16] and shim[56:60] == b'ARM\x64'
 assert shim.count(bytes.fromhex('030000d4')) == 2
 assert bytes.fromhex('04e03bd5') not in shim
