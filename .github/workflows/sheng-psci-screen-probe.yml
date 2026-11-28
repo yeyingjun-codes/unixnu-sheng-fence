@@ -1,0 +1,48 @@
+name: sheng-psci-screen-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_token:
+        description: "temporary token for reading the existing private artifact"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  repack:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      WORK: ${{ github.workspace }}/work
+      DIAG: ${{ github.workspace }}/out/diag/probe
+      GHTOKEN: ${{ inputs.artifact_token }}
+    steps:
+      - name: checkout probe source and scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: build PSCI version/features framebuffer probe
+        run: |
+          set -euo pipefail
+          mkdir -p "$DIAG"
+          exec > >(tee -a "$DIAG/build.log") 2>&1
+          brew install llvm lld
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:$PATH"
+          clang --version
+          python3 "$GITHUB_WORKSPACE/.github/scripts/fetch_direct_inputs.py"
+          python3 "$GITHUB_WORKSPACE/.github/scripts/repack_psci_screen.py"
+          shasum -a 256 "$DIAG/probe-psci-screen.img" "$DIAG/report.json"
+
+      - name: upload PSCI screen image and disassembly
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sheng-psci-screen-${{ github.run_id }}
+          path: out/diag/probe/**
+          if-no-files-found: error
+          retention-days: 14
